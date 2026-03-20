@@ -1,6 +1,6 @@
 {
   "name": "openfused",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Decentralized context mesh for AI agents. Persistent memory, signed messaging, FUSE filesystem. The protocol is files.",
   "license": "MIT",
   "type": "module",

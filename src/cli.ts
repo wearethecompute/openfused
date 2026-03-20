@@ -10,8 +10,8 @@ const program = new Command();
 
 program
   .name("openfuse")
-  .description("Persistent, shareable, portable context for AI agents")
-  .version("0.1.0");
+  .description("Decentralized context mesh for AI agents. The protocol is files.")
+  .version("0.2.1");
 
 // --- init ---
 program
