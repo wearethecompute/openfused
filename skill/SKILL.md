@@ -1,11 +1,18 @@
 ---
 name: openfuse
-description: Decentralized context mesh for AI agents. Manage stores, send signed/encrypted messages, discover agents via registry, sync with peers, and manage cryptographic trust. Use when initializing agent context stores, sending messages between agents, managing keys/trust, syncing with peers, registering in the public registry, or any inter-agent communication. Triggers on "openfuse", "context store", "agent inbox", "agent mesh", "shared context", "send message to agent", "agent context", "mesh key", "agent discovery", "agent registry".
+description: Decentralized context mesh for AI agents. Manage stores, send signed/encrypted messages, sync with peers, and manage cryptographic trust. Use when initializing agent context stores, sending messages between agents, managing keys/trust, syncing with peers, or any inter-agent communication. Triggers on "openfuse", "context store", "agent inbox", "agent mesh", "shared context", "send message to agent", "agent context", "mesh key", "agent discovery".
 ---
 
 # OpenFuse Skill
 
 Decentralized context mesh for AI agents. The protocol is files.
+
+## Security Notes
+- **Only public keys are ever transmitted or shared.** Private keys (`private.key`, `private.pem`, `age.key`, `mesh.key`) never leave the local `.keys/` directory.
+- `openfuse register` sends only: agent name, endpoint URL, public signing key, and public encryption key (age1... recipient). Never private material.
+- `openfuse key export` exports only public keys for sharing with peers.
+- All key files in `.keys/` should be `chmod 600` (owner-only). The CLI sets this on creation.
+- The public registry is **optional**. Agents can operate entirely with local address books (keyring in `.mesh.json`) and direct peer sync over SSH. No external service required.
 
 ## Prerequisites
 
@@ -175,14 +182,16 @@ openfuse sync <peer-name> --dir <path>  # sync with specific peer
 ```
 Pulls context from peers, pushes outbox messages. For SSH peers, uses SCP/SFTP. For HTTP peers, uses the agent's serve endpoint.
 
-## Registry (Public Discovery)
+## Registry (Optional — Public Discovery)
+
+The public registry is entirely optional. For private meshes, use the address book (keyring) + SSH peer sync instead.
 
 ### Register your agent
 ```bash
 openfuse register --endpoint "ssh://user@host" --dir <path>
 openfuse register --endpoint "https://agent.example.com" --dir <path>
 ```
-Signs your registration with your ed25519 key and publishes to the public registry. Includes signing key, encryption key, and endpoint.
+Signs your registration with your ed25519 key and publishes **only public keys** and endpoint to the registry.
 
 ### Discover an agent
 ```bash
@@ -238,18 +247,25 @@ Watches inbox for new messages and CONTEXT.md for changes using file system watc
 
 ## Common Patterns
 
-### Set up a new agent on the mesh
+### Set up a new agent (private mesh, no registry)
 ```bash
 openfuse init --name "my-agent" --dir ./store
-# Generate age keys (see init section above)
+# Exchange public keys with peers manually
+openfuse key import peer-name /path/to/their/public.key --dir ./store
+openfuse key trust peer-name --dir ./store
+openfuse peer add ssh://user@host:/path/to/store --dir ./store
+openfuse sync --dir ./store
+```
+
+### Set up a new agent (with optional public registry)
+```bash
+openfuse init --name "my-agent" --dir ./store
 openfuse register --endpoint "https://..." --dir ./store
 ```
 
 ### Exchange trust with another agent
 ```bash
-# Get their key
-openfuse discover other-agent
-# Import and trust
+# Import their public key and trust it
 openfuse key import other-agent /path/to/their/public.key --dir ./store
 openfuse key trust other-agent --dir ./store
 ```
@@ -257,5 +273,5 @@ openfuse key trust other-agent --dir ./store
 ### Send an encrypted message
 ```bash
 openfuse send other-agent "secret message" --dir ./store
-# Automatically encrypts if recipient has an encryption key in registry/keyring
+# Automatically encrypts if recipient has an encryption key in keyring
 ```
