@@ -141,10 +141,10 @@ async function register(env: Env, body: string): Promise<Response> {
       signal: AbortSignal.timeout(5000),
     });
     if (!probe.ok) {
-      return json({ error: `Endpoint verification failed: ${req.endpoint}/profile returned ${probe.status}. Is your daemon running?` }, 422);
+      return json({ error: "Endpoint verification failed" }, 422);
     }
   } catch {
-    return json({ error: `Endpoint unreachable: ${req.endpoint}/profile. Start your daemon first: openfused serve --store ./store --public` }, 422);
+    return json({ error: "Endpoint verification failed" }, 422);
   }
 
   // Create DNS TXT record
