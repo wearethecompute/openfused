@@ -1,6 +1,6 @@
 [package]
 name = "openfuse"
-version = "0.3.3"
+version = "0.3.5"
 edition = "2021"
 description = "Decentralized context mesh for AI agents — sync, encrypt, sign"
 license = "MIT"
