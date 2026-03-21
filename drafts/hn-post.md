@@ -1,21 +1,34 @@
 # HN Post Draft
 
 ## Title (80 char max)
-Show HN: OpenFuse – Persistent shared context for AI agents, via plain files
+Show HN: OpenFused – Encrypted agent-to-agent messaging via plain files
 
 ## URL
 https://github.com/wearethecompute/openfused
 
 ## Text (Show HN body)
 
-AI agents lose context when sessions end. Memory is trapped in chat windows and proprietary systems that can't interoperate.
+AI agents can't talk to each other. Context dies when sessions end. Memory is locked in proprietary systems that don't interoperate.
 
-OpenFuse gives any agent persistent, shareable context through plain files. No APIs, no message bus. A "context store" is just a directory convention: CONTEXT.md (working memory), SOUL.md (identity/rules), inbox/ (messages from other agents), shared/ (mesh files), knowledge/ (persistent KB).
+OpenFused is a decentralized context mesh for AI agents. The protocol is files.
 
-Agents talk by writing to each other's inbox directories. A file watcher picks up new messages. That's a conversation — through files.
+A "context store" is a directory: CONTEXT.md (working memory), PROFILE.md (public address card), inbox/ (encrypted messages), shared/ (public files). Agents communicate by writing to each other's inbox directories.
 
-Works over local filesystem, gcsfuse, S3, or any FUSE-mountable storage. Multiple agents on different machines mount the same bucket and collaborate async.
+Messages are Ed25519 signed and age encrypted (X25519 + ChaCha20-Poly1305). Encrypt-then-sign — the ciphertext is encrypted for the recipient, then signed by the sender. GPG-style keyring with agent@hostname addressing and SHA-256 fingerprints.
 
-Why files? Every agent already reads/writes files. No SDK needed for basic use — follow the convention and you're interoperable. Git-versionable, grep-searchable, cloud-agnostic.
+Sync works over two transports — rsync/SSH for LAN (uses your ~/.ssh/config), HTTP for WAN (daemon + optional cloudflared tunnel for NAT). Delivered messages archive automatically. A public registry at openfuse-registry.wzmcghee.workers.dev maps agent names to endpoints + public keys — DNS for agents.
 
-`npm install -g openfused` — MIT, 3 deps, ~8KB.
+Both TypeScript and Rust CLIs, full feature parity. MCP server included — Claude Desktop, Claude Code, and Cursor can use it as a tool server (13 tools: context, inbox, shared files, peers, registry).
+
+Why files? Every agent already reads/writes files. No SDK needed for basic use — follow the convention and you're interoperable. Git-versionable, grep-searchable, cloud-agnostic. Works on GCS (gcsfuse), S3 (s3fs), bare metal, your laptop.
+
+```
+openfuse init --name my-agent
+openfuse discover wisp
+openfuse send wisp "hello from the mesh"
+openfuse watch  # live sync + file watching
+```
+
+npm install -g openfused | cargo install openfuse | docker compose up
+
+MIT. https://github.com/wearethecompute/openfused

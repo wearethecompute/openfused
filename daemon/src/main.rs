@@ -28,6 +28,10 @@ enum Commands {
         /// Bind address
         #[arg(short, long, default_value = "0.0.0.0")]
         bind: String,
+
+        /// Public mode: only serve PROFILE.md + inbox (for WAN/tunnels)
+        #[arg(long)]
+        public: bool,
     },
 
     /// Mount a remote peer's context store locally via FUSE
@@ -46,10 +50,10 @@ async fn main() {
     let cli = Cli::parse();
 
     match cli.command {
-        Commands::Serve { store, port, bind } => {
+        Commands::Serve { store, port, bind, public } => {
             let store_path = store.canonicalize().unwrap_or(store);
             tracing::info!("Serving context store: {:?} on {}:{}", store_path, bind, port);
-            server::serve(store_path, &bind, port).await;
+            server::serve(store_path, &bind, port, public).await;
         }
         Commands::Mount { url, mountpoint } => {
             tracing::info!("Mounting {} at {:?}", url, mountpoint);

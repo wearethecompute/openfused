@@ -11,16 +11,27 @@ use tower_http::cors::CorsLayer;
 
 use crate::store::{ContextStore, FileEntry};
 
-pub async fn serve(store_path: PathBuf, bind: &str, port: u16) {
+pub async fn serve(store_path: PathBuf, bind: &str, port: u16, public: bool) {
     let store = Arc::new(ContextStore::new(store_path));
 
-    let app = Router::new()
+    let mut app = Router::new()
         .route("/", get(root))
-        .route("/ls", get(list_root))
-        .route("/ls/{*path}", get(list_dir))
-        .route("/read/{*path}", get(read_file))
         .route("/config", get(get_config))
-        .route("/inbox", post(receive_inbox))
+        .route("/profile", get(get_profile))
+        .route("/inbox", post(receive_inbox));
+
+    // Full context serving — only for trusted peers (LAN/SSH)
+    if public {
+        tracing::info!("Public mode: serving PROFILE.md + inbox only");
+    } else {
+        tracing::info!("Full mode: serving all context to peers");
+        app = app
+            .route("/ls", get(list_root))
+            .route("/ls/{*path}", get(list_dir))
+            .route("/read/{*path}", get(read_file));
+    }
+
+    let app = app
         .layer(DefaultBodyLimit::max(1024 * 1024)) // 1MB max request body
         .layer(CorsLayer::permissive())
         .with_state(store);
@@ -33,7 +44,7 @@ pub async fn serve(store_path: PathBuf, bind: &str, port: u16) {
 }
 
 async fn root() -> &'static str {
-    "openfused v0.3.0 — context mesh daemon"
+    "openfused v0.3.2 — context mesh daemon"
 }
 
 async fn get_config(
@@ -46,6 +57,13 @@ async fn get_config(
         "publicKey": config.public_key,
         "encryptionKey": config.encryption_key,
     })))
+}
+
+/// Serve PROFILE.md — the agent's public business card
+async fn get_profile(
+    State(store): State<Arc<ContextStore>>,
+) -> Result<Vec<u8>, StatusCode> {
+    store.read_file("PROFILE.md").await.ok_or(StatusCode::NOT_FOUND)
 }
 
 async fn list_root(State(store): State<Arc<ContextStore>>) -> Json<Vec<FileEntry>> {
@@ -69,12 +87,11 @@ async fn read_file(
     store.read_file(&path).await.ok_or(StatusCode::NOT_FOUND)
 }
 
-/// Receive a signed message into the inbox (used by openfuse sync over HTTP)
+/// Receive a signed message into the inbox
 async fn receive_inbox(
     State(store): State<Arc<ContextStore>>,
     body: String,
 ) -> Result<StatusCode, StatusCode> {
-    // Validate it's parseable JSON with required fields
     let msg: serde_json::Value =
         serde_json::from_str(&body).map_err(|_| StatusCode::BAD_REQUEST)?;
 
@@ -82,7 +99,6 @@ async fn receive_inbox(
         return Err(StatusCode::BAD_REQUEST);
     }
 
-    // Write to inbox with timestamp filename
     let from = msg["from"].as_str().unwrap_or("unknown");
     let timestamp = chrono::Utc::now()
         .to_rfc3339()
