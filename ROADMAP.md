@@ -59,45 +59,49 @@ That changes everything about how this should be designed.
 - [ ] **Cross-bucket messaging** — write to another agent's S3/GCS bucket directly (IAM scoped)
 - [ ] **Dual-mount pattern** — two agents mount same bucket via s3fs/gcsfuse, zero-config messaging
 
-### v0.6 — Relay (NAT Traversal)
-The registry doubles as a relay. Agents behind NAT can't receive inbound connections, so the worker acts as their public mailbox — like SMTP for agents.
+### v0.6 — Reachability (NAT Traversal)
+Most agents are already reachable with what exists. The goal isn't to build one solution — it's to support the right tier for each deployment.
 
-```
-POST /send/{agent}   → drop a signed message (anyone, rate-limited)
-GET  /inbox/{agent}  → pull your mail (authenticated via signature challenge)
-DELETE /inbox/{agent}/{id} → clear processed messages (owner only)
-```
+**Reachability tiers (prefer decentralized, fall back to centralized):**
 
-- [ ] **`/send/{agent}` endpoint** — anyone can POST signed messages, worker stores in KV/R2
-- [ ] **`/inbox/{agent}` endpoint** — owner pulls mail with signed timestamp challenge to prove key ownership
-- [ ] **Relay flag in manifest** — `"relay": true` tells senders to use the worker instead of direct delivery
-- [ ] **Encrypt-then-store** — relay holds opaque ciphertext (age-encrypted for recipient), can't read contents
-- [ ] **Rate limiting** — per-IP, per-sender, max message size enforced at worker level
-- [ ] **Auto-expire** — unread messages TTL after 30 days
-- [ ] **R2 for large payloads** — KV for small messages (<25KB), R2 for shared files/knowledge dumps
-- [ ] **Append-only bucket alternative** — for agents who skip the worker: GCS/S3 with `objectCreator` IAM (write-only, no delete) + versioning + retention policy
-- [ ] **Cloudflare Tunnel integration** — agents behind NAT run `openfuse serve` + `cloudflared tunnel`, register the tunnel URL as their endpoint. Anyone on the internet can POST to their inbox through Cloudflare's network. Zero port forwarding, zero static IP, works behind CGNAT. The agent's home machine becomes a reachable mail server without exposing anything.
+| Scenario | Solution | Centralized? |
+|----------|----------|--------------|
+| VPS agents | `openfuse serve` — public IP, done | No |
+| NAT'd + cloudflared | `openfuse serve` + `cloudflared tunnel` → public URL | No (CF is transport only) |
+| Docker agents | Mount store as volume, openfused on host or in image | No |
+| Pull-only agents | `openfuse sync` on cron — outbound-only, pulls from peers | No |
+| Both agents behind NAT, no cloudflared | Worker relay (store-and-forward) | Yes (last resort) |
 
+**The sync we already built solves most NAT cases.** An agent behind Docker/NAT just runs `openfuse sync` periodically — it initiates outbound connections. The relay is only needed if BOTH agents are behind NAT and can't run cloudflared. That's rare.
+
+#### Cloudflare Tunnel (decentralized, preferred for NAT)
 ```bash
-# Agent behind NAT starts serving
 openfuse serve --port 9781
 cloudflared tunnel --url http://localhost:9781
 # → https://abc123.trycloudflare.com
 
-# Register tunnel URL as endpoint
 openfuse register --name my-agent --endpoint https://abc123.trycloudflare.com
+# Now anyone worldwide can send mail directly to your home machine
+```
+- [ ] **`openfuse serve` daemon** — HTTP endpoint for inbox delivery + context sync
+- [ ] **Tunnel auto-setup** — `openfuse serve --tunnel` wraps cloudflared, registers URL automatically
+- [ ] **Tunnel URL in manifest** — registry stores the tunnel URL as the agent's endpoint
 
-# Now anyone worldwide can:
-openfuse send my-agent "hey, check this vuln"
-# → resolves registry → POSTs to cloudflare tunnel → lands in agent's local inbox
+#### Worker relay (centralized fallback, last resort)
+For when both peers are behind NAT and neither can run a tunnel.
+
+```
+POST /send/{agent}   → drop a signed message (rate-limited)
+GET  /inbox/{agent}  → pull your mail (authenticated)
 ```
 
-Three tiers of reachability:
-1. **LAN/VPN** — direct SSHFS mount or `openfuse sync` over SSH (what we have now)
-2. **Cloudflare Tunnel** — agent serves locally, CF punches through NAT (self-hosted, free tier)
-3. **Worker relay** — fully serverless, agent doesn't even need to be online (store-and-forward)
+- [ ] **`/send/{agent}` endpoint** — signed messages stored in KV/R2
+- [ ] **`/inbox/{agent}` endpoint** — owner pulls with signature challenge
+- [ ] **Relay flag in manifest** — `"relay": true` tells senders to use worker
+- [ ] **Encrypt-then-store** — relay holds opaque ciphertext, can't read contents
+- [ ] **Auto-expire** — unread messages TTL after 30 days
 
-**Key insight:** This is SMTP. The worker is the mail server. KV/R2 is the mail store. The registry is DNS+MX. Cloudflare Tunnel is like running your own mail server at home with a static MX record. Email for agents — transport is HTTPS, format is signed JSON.
+**Design principle:** The relay is a centralized crutch. Every other tier is decentralized. Prefer sync, prefer tunnels, use the relay only when nothing else works.
 
 ### v0.7 — OpenShell Integration
 - [ ] **Sandboxed agent collaboration** — OpenFused context stores as shared volumes across OpenShell sandboxes
