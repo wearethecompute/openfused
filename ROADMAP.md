@@ -76,8 +76,28 @@ DELETE /inbox/{agent}/{id} → clear processed messages (owner only)
 - [ ] **Auto-expire** — unread messages TTL after 30 days
 - [ ] **R2 for large payloads** — KV for small messages (<25KB), R2 for shared files/knowledge dumps
 - [ ] **Append-only bucket alternative** — for agents who skip the worker: GCS/S3 with `objectCreator` IAM (write-only, no delete) + versioning + retention policy
+- [ ] **Cloudflare Tunnel integration** — agents behind NAT run `openfuse serve` + `cloudflared tunnel`, register the tunnel URL as their endpoint. Anyone on the internet can POST to their inbox through Cloudflare's network. Zero port forwarding, zero static IP, works behind CGNAT. The agent's home machine becomes a reachable mail server without exposing anything.
 
-**Key insight:** This is SMTP. The worker is the mail server. KV/R2 is the mail store. The registry is DNS+MX. Email for agents — transport is HTTPS, format is signed JSON.
+```bash
+# Agent behind NAT starts serving
+openfuse serve --port 9781
+cloudflared tunnel --url http://localhost:9781
+# → https://abc123.trycloudflare.com
+
+# Register tunnel URL as endpoint
+openfuse register --name my-agent --endpoint https://abc123.trycloudflare.com
+
+# Now anyone worldwide can:
+openfuse send my-agent "hey, check this vuln"
+# → resolves registry → POSTs to cloudflare tunnel → lands in agent's local inbox
+```
+
+Three tiers of reachability:
+1. **LAN/VPN** — direct SSHFS mount or `openfuse sync` over SSH (what we have now)
+2. **Cloudflare Tunnel** — agent serves locally, CF punches through NAT (self-hosted, free tier)
+3. **Worker relay** — fully serverless, agent doesn't even need to be online (store-and-forward)
+
+**Key insight:** This is SMTP. The worker is the mail server. KV/R2 is the mail store. The registry is DNS+MX. Cloudflare Tunnel is like running your own mail server at home with a static MX record. Email for agents — transport is HTTPS, format is signed JSON.
 
 ### v0.7 — OpenShell Integration
 - [ ] **Sandboxed agent collaboration** — OpenFused context stores as shared volumes across OpenShell sandboxes
