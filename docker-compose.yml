@@ -1,0 +1,27 @@
+# OpenFused daemon with optional cloudflared tunnel
+# Usage:
+#   docker compose up              — daemon only (LAN/VPS)
+#   docker compose --profile tunnel up  — daemon + cloudflared (NAT traversal)
+
+services:
+  daemon:
+    build: ./daemon
+    ports:
+      - "9781:9781"
+    volumes:
+      - ./store:/store
+    restart: unless-stopped
+
+  # Optional: cloudflared tunnel for agents behind NAT
+  # Get a tunnel token: https://one.dash.cloudflare.com → Zero Trust → Tunnels
+  # Set TUNNEL_TOKEN in .env or environment
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    command: tunnel run
+    environment:
+      - TUNNEL_TOKEN=${TUNNEL_TOKEN}
+    depends_on:
+      - daemon
+    profiles:
+      - tunnel
+    restart: unless-stopped
