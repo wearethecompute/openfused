@@ -100,12 +100,12 @@ impl ContextStore {
             )?;
         }
 
-        let soul_path = self.root.join("SOUL.md");
-        if !soul_path.exists() {
+        let profile_path = self.root.join("PROFILE.md");
+        if !profile_path.exists() {
             fs::write(
-                &soul_path,
+                &profile_path,
                 format!(
-                    "# Soul\n\n*Agent identity and rules.*\n\n**Name:** {}\n**ID:** {}\n",
+                    "# {}\n\n**ID:** {}\n\n## Endpoint\n\n_(not configured — run `openfuse register`)_\n",
                     name, id
                 ),
             )?;
@@ -177,12 +177,12 @@ impl ContextStore {
         Ok(())
     }
 
-    pub fn read_soul(&self) -> Result<String> {
-        Ok(fs::read_to_string(self.root.join("SOUL.md"))?)
+    pub fn read_profile(&self) -> Result<String> {
+        Ok(fs::read_to_string(self.root.join("PROFILE.md"))?)
     }
 
-    pub fn write_soul(&self, content: &str) -> Result<()> {
-        fs::write(self.root.join("SOUL.md"), content)?;
+    pub fn write_profile(&self, content: &str) -> Result<()> {
+        fs::write(self.root.join("PROFILE.md"), content)?;
         Ok(())
     }
 

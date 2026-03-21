@@ -51,7 +51,7 @@ export class ContextStore {
 
     // Copy templates
     const templatesDir = new URL("../templates/", import.meta.url).pathname;
-    for (const file of ["CONTEXT.md", "SOUL.md"]) {
+    for (const file of ["CONTEXT.md", "PROFILE.md"]) {
       const templatePath = join(templatesDir, file);
       const destPath = join(this.root, file);
       if (!existsSync(destPath)) {
@@ -113,12 +113,12 @@ export class ContextStore {
     await writeFile(join(this.root, "CONTEXT.md"), content);
   }
 
-  async readSoul(): Promise<string> {
-    return readFile(join(this.root, "SOUL.md"), "utf-8");
+  async readProfile(): Promise<string> {
+    return readFile(join(this.root, "PROFILE.md"), "utf-8");
   }
 
-  async writeSoul(content: string): Promise<void> {
-    await writeFile(join(this.root, "SOUL.md"), content);
+  async writeProfile(content: string): Promise<void> {
+    await writeFile(join(this.root, "PROFILE.md"), content);
   }
 
   // --- Inbox ---

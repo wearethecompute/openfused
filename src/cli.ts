@@ -87,19 +87,19 @@ program
     }
   });
 
-// --- soul ---
+// --- profile ---
 program
-  .command("soul")
-  .description("Read or update SOUL.md")
+  .command("profile")
+  .description("Read or update PROFILE.md (public address card)")
   .option("-d, --dir <path>", "Context store directory", ".")
-  .option("-s, --set <text>", "Set soul to this text")
+  .option("-s, --set <text>", "Set profile to this text")
   .action(async (opts) => {
     const store = new ContextStore(resolve(opts.dir));
     if (opts.set) {
-      await store.writeSoul(opts.set);
-      console.log("Soul updated.");
+      await store.writeProfile(opts.set);
+      console.log("Profile updated.");
     } else {
-      console.log(await store.readSoul());
+      console.log(await store.readProfile());
     }
   });
 

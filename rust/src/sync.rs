@@ -99,7 +99,7 @@ async fn sync_http(
     let mut errors = vec![];
 
     // Pull root files
-    for file in &["CONTEXT.md"] {
+    for file in &["CONTEXT.md", "PROFILE.md"] {
         match client
             .get(format!("{}/read/{}", base_url, file))
             .send()
@@ -257,7 +257,7 @@ async fn sync_ssh(
     let mut errors = vec![];
 
     // Pull root files
-    for file in &["CONTEXT.md"] {
+    for file in &["CONTEXT.md", "PROFILE.md"] {
         let src = format!("{}:{}/{}", host, remote_path, file);
         let dst = peer_dir.join(file);
         match rsync(&src, &dst.to_string_lossy()).await {

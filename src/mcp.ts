@@ -54,18 +54,18 @@ server.tool(
 
 // --- Soul ---
 
-server.tool("soul_read", "Read the agent's SOUL.md (identity & rules)", async () => {
-  const content = await store.readSoul();
+server.tool("profile_read", "Read the agent's PROFILE.md (public address card)", async () => {
+  const content = await store.readProfile();
   return { content: [{ type: "text", text: content }] };
 });
 
 server.tool(
-  "soul_write",
-  "Replace SOUL.md contents",
-  { text: z.string().describe("New content for SOUL.md") },
+  "profile_write",
+  "Update PROFILE.md (public address card — name, endpoint, capabilities)",
+  { text: z.string().describe("New content for PROFILE.md") },
   async ({ text }) => {
-    await store.writeSoul(text);
-    return { content: [{ type: "text", text: "Soul updated." }] };
+    await store.writeProfile(text);
+    return { content: [{ type: "text", text: "Profile updated." }] };
   }
 );
 

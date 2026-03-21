@@ -44,8 +44,8 @@ enum Commands {
         #[arg(short, long)]
         append: Option<String>,
     },
-    /// Read or update SOUL.md
-    Soul {
+    /// Read or update PROFILE.md (public address card)
+    Profile {
         #[arg(short, long, default_value = ".")]
         dir: PathBuf,
         #[arg(short, long)]
@@ -283,13 +283,13 @@ async fn main() -> Result<()> {
             }
         }
 
-        Commands::Soul { dir, set } => {
+        Commands::Profile { dir, set } => {
             let s = store::ContextStore::new(&dir);
             if let Some(text) = set {
-                s.write_soul(&text)?;
-                println!("Soul updated.");
+                s.write_profile(&text)?;
+                println!("Profile updated.");
             } else {
-                print!("{}", s.read_soul()?);
+                print!("{}", s.read_profile()?);
             }
         }
 

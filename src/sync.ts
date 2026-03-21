@@ -96,7 +96,7 @@ async function syncHttp(
   const pushed: string[] = [];
   const errors: string[] = [];
 
-  for (const file of ["CONTEXT.md"]) { // SOUL.md is private — not synced
+  for (const file of ["CONTEXT.md", "PROFILE.md"]) {
     try {
       const resp = await fetch(`${baseUrl}/read/${file}`);
       if (resp.ok) {
@@ -171,7 +171,7 @@ async function syncSsh(
   const pushed: string[] = [];
   const errors: string[] = [];
 
-  for (const file of ["CONTEXT.md"]) { // SOUL.md is private — not synced
+  for (const file of ["CONTEXT.md", "PROFILE.md"]) {
     try {
       await execFile("rsync", ["-az", `${host}:${remotePath}/${file}`, join(peerDir, file)]);
       pulled.push(file);
