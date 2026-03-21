@@ -2,43 +2,77 @@
 
 Native Rust implementation of the `openfuse` CLI — same commands, same file format, same mesh protocol as the TypeScript version.
 
-## Build
-
-```bash
-cargo build --release
-# Binary at: target/release/openfuse
-```
-
 ## Install
 
 ```bash
 cargo install --path .
+# Binary at: target/release/openfuse (~5MB, no runtime needed)
 ```
 
 ## Usage
 
-Identical to the TypeScript CLI:
-
 ```bash
+# Initialize a context store
 openfuse init --name my-agent
+
+# Status
 openfuse status
+
+# Context
 openfuse context
-openfuse context --append "## Update\nFinished the research phase."
+openfuse context --append "## Update\nDone."
+
+# Encrypted messaging
+openfuse inbox send bob "hello, encrypted!"
 openfuse inbox list
-openfuse inbox send agent-bob "Check shared/findings.md"
+
+# Key management (GPG-style)
+openfuse key show
+openfuse key list
+openfuse key import wisp ./wisp.key --encryption-key "age1..." --address "wisp@alice.local"
+openfuse key trust wisp
+openfuse key export
+
+# Sync (HTTP for WAN, rsync/SSH for LAN)
+openfuse peer add ssh://alice.local:/home/agent/ctx --name wisp
+openfuse sync
+
+# Registry (DNS for agents)
+openfuse register --endpoint ssh://alice.local:/ctx
+openfuse discover wearethecompute
+openfuse send wearethecompute "hello from the mesh"
+
+# Key lifecycle
+openfuse revoke    # permanently invalidate your key
+openfuse rotate    # swap to a new keypair
+
+# Watch for messages
 openfuse watch
+
+# Share files
 openfuse share ./report.pdf
-openfuse peer add https://agent-bob.example.com --name bob
-openfuse peer list
-openfuse key
 ```
 
-## Differences from the TypeScript version
+## Features
 
-- **Keys**: Uses raw ed25519 bytes (hex-encoded) instead of PEM-wrapped keys. Stored as `.keys/private.key` and `.keys/public.key` instead of `.pem` files. Not cross-compatible with TS-generated keys.
-- **No FUSE mounting**: The Rust binary is a pure CLI tool — filesystem mounting (gcsfuse, s3fuse) is handled at the OS level.
-- **Single binary**: No Node.js runtime required. Ships as a ~5MB static binary.
+Full parity with the TypeScript SDK:
 
-## Cross-platform
+- **age encryption** — X25519 + ChaCha20-Poly1305, encrypt-then-sign
+- **Ed25519 signing** — every message cryptographically signed
+- **GPG-style keyring** — import, trust, untrust, export, fingerprints
+- **Sync** — HTTP (WAN) + rsync/SSH (LAN), uses ~/.ssh/config aliases
+- **Registry** — register, discover, send via public registry
+- **Key revocation + rotation** — signed lifecycle management
+- **Update checker** — warns on `status` if newer version available
 
-Builds on Linux, macOS, and Windows. For release builds targeting multiple platforms, use GitHub Actions with the matrix strategy.
+## Key format
+
+Raw ed25519 bytes as hex strings. Same format as the TypeScript SDK — keys are cross-compatible.
+
+```
+.keys/
+  private.key   — 64 hex chars (32 bytes ed25519 signing key)
+  public.key    — 64 hex chars (32 bytes ed25519 verifying key)
+  age.key       — AGE-SECRET-KEY-... (age identity)
+  age.pub       — age1... (age recipient)
+```
