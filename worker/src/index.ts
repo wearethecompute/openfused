@@ -133,7 +133,21 @@ async function register(env: Env, body: string): Promise<Response> {
     }
   }
 
-  // Create DNS TXT record — all public endpoints are HTTP (SSH rejected above)
+  // Verify endpoint is live — HEAD /profile must return 200.
+  // Proves the agent actually controls this URL and has a daemon running.
+  try {
+    const probe = await fetch(`${req.endpoint.replace(/\/$/, "")}/profile`, {
+      method: "HEAD",
+      signal: AbortSignal.timeout(5000),
+    });
+    if (!probe.ok) {
+      return json({ error: `Endpoint verification failed: ${req.endpoint}/profile returned ${probe.status}. Is your daemon running?` }, 422);
+    }
+  } catch {
+    return json({ error: `Endpoint unreachable: ${req.endpoint}/profile. Start your daemon first: openfused serve --store ./store --public` }, 422);
+  }
+
+  // Create DNS TXT record
   const txtContent = `v=of1 e=${req.endpoint} pk=${req.publicKey} ek=${req.encryptionKey || ""} fp=${req.fingerprint}`;
   await upsertDnsTxt(env, safeName, txtContent);
 
