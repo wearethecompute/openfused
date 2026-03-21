@@ -31,9 +31,14 @@ export default {
     }
 
     try {
-      // GET / — registry info
+      // GET / — registry info + latest version (CLI checks this)
       if (path === "/" && request.method === "GET") {
-        return json({ service: "openfuse-registry", version: "0.3.0" });
+        return json({
+          service: "openfuse-registry",
+          version: "0.3.0",
+          latest: "0.3.0",
+          changelog: "https://github.com/wearethecompute/openfused/releases",
+        });
       }
 
       // GET /list — list all registered agents

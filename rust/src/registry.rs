@@ -1,5 +1,5 @@
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use anyhow::{Context as _, Result};
 use serde::{Deserialize, Serialize};
@@ -256,6 +256,22 @@ pub fn verify_manifest(manifest: &Manifest) -> bool {
         encrypted: false,
     };
     crypto::verify_message(&signed)
+}
+
+/// Check if a newer version is available. Non-blocking, best-effort.
+pub async fn check_update(current: &str) -> Option<String> {
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(2))
+        .build()
+        .ok()?;
+    let resp = client.get(DEFAULT_REGISTRY).send().await.ok()?;
+    let body: serde_json::Value = resp.json().await.ok()?;
+    let latest = body["latest"].as_str()?;
+    if latest != current {
+        Some(latest.to_string())
+    } else {
+        None
+    }
 }
 
 /// Canonical string representation of a manifest for signing.

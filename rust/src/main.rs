@@ -8,6 +8,8 @@ use anyhow::Result;
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 
+const VERSION: &str = "0.3.0";
+
 #[derive(Parser)]
 #[command(
     name = "openfuse",
@@ -245,6 +247,11 @@ async fn main() -> Result<()> {
             println!("Peers: {}", st.peers);
             println!("Inbox: {} messages", st.inbox_count);
             println!("Shared: {} files", st.shared_count);
+
+            // Check for updates (non-blocking, best-effort)
+            if let Some(latest) = registry::check_update(VERSION).await {
+                eprintln!("\n  Update available: {} → {} — https://github.com/wearethecompute/openfused/releases", VERSION, latest);
+            }
         }
 
         Commands::Context { dir, set, append } => {
