@@ -142,6 +142,8 @@ program
   .description("Watch for inbox messages, context changes, and sync with peers")
   .option("-d, --dir <path>", "Context store directory", ".")
   .option("--sync-interval <seconds>", "Peer sync interval in seconds (0 to disable)", "60")
+  .option("--tunnel <host>", "Open reverse SSH tunnel to host (makes your store reachable from behind NAT)")
+  .option("--tunnel-port <port>", "Remote port for reverse tunnel", "2222")
   .action(async (opts) => {
     const store = new ContextStore(resolve(opts.dir));
     if (!(await store.exists())) {
@@ -155,6 +157,39 @@ program
     if (config.peers.length > 0 && interval > 0) {
       console.log(`Syncing with ${config.peers.length} peer(s) every ${opts.syncInterval}s`);
     }
+
+    // Reverse SSH tunnel (optional)
+    if (opts.tunnel) {
+      const { spawn } = await import("node:child_process");
+      const tunnelPort = opts.tunnelPort;
+      const tunnelHost = opts.tunnel;
+
+      // Try autossh first, fall back to ssh
+      const cmd = await (async () => {
+        try {
+          const { execFileSync } = await import("node:child_process");
+          execFileSync("which", ["autossh"], { stdio: "ignore" });
+          return "autossh";
+        } catch {
+          return "ssh";
+        }
+      })();
+
+      const args = cmd === "autossh"
+        ? ["-M", "0", "-N", "-R", `${tunnelPort}:localhost:9781`, tunnelHost, "-o", "ServerAliveInterval=15", "-o", "ExitOnForwardFailure=yes"]
+        : ["-N", "-R", `${tunnelPort}:localhost:9781`, tunnelHost, "-o", "ServerAliveInterval=15", "-o", "ExitOnForwardFailure=yes"];
+
+      const tunnel = spawn(cmd, args, { stdio: "ignore" });
+      tunnel.on("error", (e) => console.error(`[tunnel] ${cmd} failed: ${e.message}`));
+      tunnel.on("exit", (code) => {
+        if (code !== 0) console.error(`[tunnel] ${cmd} exited with code ${code}`);
+      });
+      process.on("exit", () => tunnel.kill());
+
+      console.log(`Tunnel: ${cmd} -R ${tunnelPort}:localhost:9781 ${tunnelHost}`);
+      console.log(`Your store is reachable at ssh://${tunnelHost}:${tunnelPort} (via daemon on :9781)`);
+    }
+
     console.log(`Press Ctrl+C to stop.\n`);
 
     watchInbox(store.root, (from, message) => {
