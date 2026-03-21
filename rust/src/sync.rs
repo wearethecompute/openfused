@@ -284,7 +284,38 @@ async fn sync_ssh(
         }
     }
 
-    // Push outbox → remote inbox
+    // Pull peer's outbox for messages addressed to us — peer may be behind NAT
+    // and can't push to us, so we grab messages they left for us.
+    let config = store.read_config()?;
+    let my_name = &config.name;
+    let inbox_dir = store.root().join("inbox");
+    fs::create_dir_all(&inbox_dir)?;
+    {
+        let src = format!("{}:{}/outbox/", host, remote_path);
+        let dst = format!("{}/", inbox_dir.to_string_lossy());
+        let output = tokio::process::Command::new("rsync")
+            .args([
+                "-az", "--ignore-existing",
+                "--include", &format!("*_to-{}.json", my_name),
+                "--include", "*_to-all.json",
+                "--exclude", "*",
+                &src, &dst,
+            ])
+            .output()
+            .await;
+        match output {
+            Ok(o) if o.status.success() => { pulled.push("outbox→inbox".to_string()); }
+            Ok(o) => {
+                let stderr = String::from_utf8_lossy(&o.stderr);
+                if !stderr.contains("No such file") {
+                    errors.push(format!("pull outbox: {}", stderr.trim()));
+                }
+            }
+            Err(e) => errors.push(format!("pull outbox: {}", e)),
+        }
+    }
+
+    // Push our outbox → remote inbox
     let outbox_dir = store.root().join("outbox");
     if outbox_dir.exists() {
         for entry in fs::read_dir(&outbox_dir)? {

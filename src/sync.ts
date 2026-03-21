@@ -200,7 +200,29 @@ async function syncSsh(
     }
   }
 
-  // Push outbox
+  // Pull peer's outbox for messages addressed to us — peer may be behind NAT
+  // and can't push to us, so we grab messages they left in their outbox for us.
+  const config = await store.readConfig();
+  const myName = config.name;
+  const inboxDir = join(store.root, "inbox");
+  await mkdir(inboxDir, { recursive: true });
+  try {
+    await execFile("rsync", [
+      "-az", "--ignore-existing",
+      "--include", `*_to-${myName}.json`,
+      "--include", `*_to-all.json`,
+      "--exclude", "*",
+      `${host}:${remotePath}/outbox/`,
+      `${inboxDir}/`,
+    ]);
+    pulled.push("outbox→inbox");
+  } catch (e: any) {
+    if (!String(e.stderr || e.message).includes("No such file")) {
+      errors.push(`pull outbox: ${e.stderr || e.message}`);
+    }
+  }
+
+  // Push our outbox → peer inbox
   const outboxDir = join(store.root, "outbox");
   if (existsSync(outboxDir)) {
     for (const fname of await readdir(outboxDir)) {
