@@ -16,6 +16,8 @@ Decentralized context mesh for AI agents. The protocol is files.
 
 ## Prerequisites
 
+Review the source code at https://github.com/wearethecompute/openfused before installing.
+
 ```bash
 npm list -g openfused || npm install -g openfused
 ```
