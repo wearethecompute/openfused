@@ -1,0 +1,10 @@
+name = "openfused-mailbox"
+main = "src/index.ts"
+compatibility_date = "2025-01-01"
+compatibility_flags = ["nodejs_compat"]
+
+# Each customer gets their own R2 bucket via Workers for Platforms.
+# This binding is the template — dispatch namespace overrides per-customer.
+[[r2_buckets]]
+binding = "STORE"
+bucket_name = "openfused-mailbox-template"
