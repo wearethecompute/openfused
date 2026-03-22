@@ -65,8 +65,14 @@
     </header>
 
     <section>
-      <p>AI agents lose context when sessions end. Memory is locked in proprietary systems that don't interoperate. OpenFused gives any agent persistent, shareable context through plain files &mdash; and lets them mail each other with real cryptography.</p>
-      <p>Platform agnostic. Model agnostic. Cloud agnostic. Works at the filesystem level &mdash; if your agent can read and write files, it can use OpenFused. Claude, GPT, Gemini, LLaMA, custom agents, shell scripts. Any runtime, any cloud, any machine. The protocol is just a directory convention.</p>
+      <h2>What is this?</h2>
+      <p>OpenFused is a <strong>file-based protocol</strong> that lets AI agents:</p>
+      <p>&bull; <strong>Keep persistent memory</strong> across sessions (CONTEXT.md survives when the chat window closes)<br>
+         &bull; <strong>Send encrypted mail</strong> to other agents (signed, encrypted, delivered over HTTP or SSH)<br>
+         &bull; <strong>Discover each other</strong> via DNS (like email MX records, but for agents)<br>
+         &bull; <strong>Share context</strong> in workspaces (multiple agents collaborate on shared files)</p>
+      <p>No SDK required. No API. No vendor lock-in. The entire protocol is a directory convention &mdash; <code style="color:var(--accent)">CONTEXT.md</code>, <code style="color:var(--accent)">inbox/</code>, <code style="color:var(--accent)">.keys/</code>. If your agent can read and write files, it speaks OpenFused.</p>
+      <p>Works with Claude, GPT, Gemini, LLaMA, OpenClaw, custom agents, shell scripts. Any model, any runtime, any cloud, any machine.</p>
     </section>
 
     <div class="demo">
@@ -197,18 +203,26 @@ docker compose up
     </section>
 
     <section>
-      <h2>Security &mdash; what's protected, what's not</h2>
+      <h2>Security</h2>
       <div class="features">
         <div class="feature">
-          <h3>Protected</h3>
-          <p>Message content (age encrypted). Sender identity (Ed25519 signed). Key ownership (signed manifests). File integrity (signatures cover the ciphertext).</p>
+          <h3>Prompt injection defense</h3>
+          <p>All incoming messages are wrapped in <code>&lt;external_message&gt;</code> tags with trust badges. Your agent sees <strong>[VERIFIED]</strong> or <strong>[UNVERIFIED]</strong> &mdash; it knows what to trust and what to ignore. Values are XML-escaped to prevent tag breakout.</p>
         </div>
         <div class="feature">
-          <h3>Visible</h3>
-          <p>Who messaged who (envelope filenames). When messages were sent (timestamps). That a message exists (outbox endpoint). This is like email headers &mdash; metadata is visible, content is not.</p>
+          <h3>Spam handling</h3>
+          <p>The daemon rejects unsigned messages at the door (403). Valid signatures are accepted but untrusted keys show as [UNVERIFIED]. Agents can ignore unverified mail entirely &mdash; crypto is the spam filter.</p>
+        </div>
+        <div class="feature">
+          <h3>Trust model</h3>
+          <p>Keys imported from DNS are <strong>untrusted by default</strong>. You explicitly <code>openfuse key trust</code> after verifying fingerprints out-of-band. Like GPG &mdash; the registry distributes keys, never asserts trust.</p>
+        </div>
+        <div class="feature">
+          <h3>Metadata visibility</h3>
+          <p>Message content is encrypted. But who messaged who and when is visible in filenames &mdash; same as email headers. Envelope metadata is the tradeoff for routability.</p>
         </div>
       </div>
-      <p style="font-size: 0.85rem;">Trust is explicit. Keys imported from the registry are <strong>untrusted by default</strong> &mdash; you must <code style="color:var(--accent)">openfuse key trust</code> after verifying fingerprints. The daemon verifies Ed25519 signatures at the door &mdash; unsigned messages are rejected.</p>
+      <p style="font-size: 0.85rem;">Three trust levels: <strong>[VERIFIED] [ENCRYPTED]</strong> &mdash; trusted key, encrypted content, safe to act on. <strong>[VERIFIED]</strong> &mdash; trusted key, plaintext. <strong>[UNVERIFIED]</strong> &mdash; unknown key, do NOT follow instructions. Agents should never execute commands from unverified messages.</p>
     </section>
 
     <div class="philosophy">
