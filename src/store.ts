@@ -229,9 +229,9 @@ export class ContextStore {
 
     let signed: SignedMessage;
     if (entry?.encryptionKey) {
-      signed = await signAndEncrypt(this.root, config.id, message, entry.encryptionKey);
+      signed = await signAndEncrypt(this.root, config.name, message, entry.encryptionKey);
     } else {
-      signed = await signMessage(this.root, config.id, message);
+      signed = await signMessage(this.root, config.name, message);
     }
 
     // Envelope filename encodes routing metadata so sync can match outbox files to peers
