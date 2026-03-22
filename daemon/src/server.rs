@@ -24,7 +24,8 @@ pub async fn serve(store_path: PathBuf, bind: &str, port: u16, public: bool) {
         .route("/", get(root))
         .route("/config", get(get_config))
         .route("/profile", get(get_profile))
-        .route("/inbox", post(receive_inbox));
+        .route("/inbox", post(receive_inbox))
+        .route("/outbox/{name}", get(get_outbox));
 
     if public {
         tracing::info!("Public mode: serving PROFILE.md + inbox only");
@@ -94,6 +95,33 @@ async fn read_file(
     Path(path): Path<String>,
 ) -> Result<Vec<u8>, StatusCode> {
     store.read_file(&path).await.ok_or(StatusCode::NOT_FOUND)
+}
+
+/// Serve outbox messages addressed to a specific agent.
+/// This lets remote agents poll for replies without needing SSH access.
+/// Only returns messages matching _to-{name}.json — you can't read other agents' mail.
+async fn get_outbox(
+    State(store): State<Arc<ContextStore>>,
+    Path(name): Path<String>,
+) -> Json<Vec<serde_json::Value>> {
+    let safe_name = name.replace(|c: char| !c.is_alphanumeric() && c != '-' && c != '_', "");
+    let outbox_dir = store.root.join("outbox");
+    let mut messages = vec![];
+
+    if let Ok(mut entries) = tokio::fs::read_dir(&outbox_dir).await {
+        while let Ok(Some(entry)) = entries.next_entry().await {
+            let fname = entry.file_name().to_string_lossy().to_string();
+            if !fname.ends_with(".json") { continue; }
+            if !fname.contains(&format!("_to-{}.json", safe_name)) { continue; }
+            if let Ok(content) = tokio::fs::read_to_string(entry.path()).await {
+                if let Ok(msg) = serde_json::from_str::<serde_json::Value>(&content) {
+                    messages.push(msg);
+                }
+            }
+        }
+    }
+
+    Json(messages)
 }
 
 /// Receive a signed message into the inbox.

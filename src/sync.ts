@@ -179,6 +179,28 @@ async function syncHttp(
     }
   }
 
+  // Pull peer's outbox for messages addressed to us (HTTP version)
+  const config = await store.readConfig();
+  const myName = config.name;
+  const inboxDir = join(store.root, "inbox");
+  await mkdir(inboxDir, { recursive: true });
+  try {
+    const resp = await fetch(`${baseUrl}/outbox/${myName}`);
+    if (resp.ok) {
+      const messages = (await resp.json()) as any[];
+      for (const msg of messages) {
+        const ts = (msg.timestamp || new Date().toISOString()).replace(/[:.]/g, "-");
+        const from = msg.from || "unknown";
+        const fname = `${ts}_from-${from}_to-${myName}.json`;
+        const dest = join(inboxDir, fname);
+        if (!existsSync(dest)) {
+          await writeFile(dest, JSON.stringify(msg, null, 2));
+          pulled.push(`outbox→${fname}`);
+        }
+      }
+    }
+  } catch {}
+
   // Push outbox → peer inbox
   const outboxDir = join(store.root, "outbox");
   if (existsSync(outboxDir)) {

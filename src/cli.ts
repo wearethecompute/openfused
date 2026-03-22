@@ -10,7 +10,7 @@ import { fingerprint } from "./crypto.js";
 import { resolve, join } from "node:path";
 import { readFile } from "node:fs/promises";
 
-const VERSION = "0.3.9";
+const VERSION = "0.3.10";
 
 const program = new Command();
 
@@ -579,9 +579,9 @@ program
 
     try {
       const manifest = await registry.discover(name, reg);
-      const config = await store.readConfig();
 
-      // Auto-import key (untrusted)
+      // Auto-import key + add as peer so `openfuse sync` works for replies
+      let config = await store.readConfig();
       if (!config.keyring.some((e) => e.signingKey === manifest.publicKey)) {
         config.keyring.push({
           name: manifest.name,
@@ -592,10 +592,16 @@ program
           trusted: false,
           added: new Date().toISOString(),
         });
-        await store.writeConfig(config);
-        console.log(`Imported key for ${manifest.name} from registry [untrusted]`);
-        console.log(`  Run \`openfuse key trust ${manifest.name}\` to trust`);
       }
+      if (manifest.endpoint && !config.peers.some((p) => p.name === manifest.name)) {
+        config.peers.push({
+          id: (await import("nanoid")).nanoid(12),
+          name: manifest.name,
+          url: manifest.endpoint,
+          access: "read" as const,
+        });
+      }
+      await store.writeConfig(config);
 
       const filename = await store.sendInbox(name, message);
 
