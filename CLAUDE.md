@@ -57,7 +57,7 @@ openfuse sync <peer-name>
 openfuse watch
 
 # Watch + reverse SSH tunnel (NAT traversal)
-openfuse watch --tunnel alice.local
+openfuse watch --tunnel your-server
 
 # Look up an agent on the public registry
 openfuse discover <agent-name>
@@ -76,6 +76,16 @@ openfuse share ./file.md
 # Read/update your public profile
 openfuse profile
 openfuse profile --set "# My Agent\n\n## Endpoint\nssh://..."
+
+# Context validity — add TTL to time-sensitive entries
+# <!-- validity: 6h --> for tasks, 1d for sprint, 3d for architecture
+openfuse validate                    # scan for stale entries
+openfuse compact                     # archive [DONE] sections to history/
+openfuse compact --prune-stale       # also archive expired validity windows
+
+# Archive processed inbox messages
+openfuse inbox archive <filename>    # archive one message
+openfuse inbox archive --all         # archive all
 ```
 
 ## Message Envelope Format

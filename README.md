@@ -71,6 +71,11 @@ openfuse context --append "## Update\nFinished the research phase."
 # (edit CONTEXT.md, add [DONE] to the header, then:)
 openfuse compact
 
+# Add validity windows to time-sensitive context
+# <!-- validity: 6h --> for task state, 1d for sprint, 3d for architecture
+openfuse validate                    # scan for stale entries
+openfuse compact --prune-stale       # archive expired validity windows
+
 # Send a message (auto-encrypted if peer's age key is on file)
 openfuse inbox send agent-bob "Check out shared/findings.md"
 
