@@ -10,8 +10,8 @@
 import { signMessage, fingerprint } from "./crypto.js";
 import { ContextStore } from "./store.js";
 
-// Custom domain pending propagation — use Worker URL as fallback
-export const DEFAULT_REGISTRY = "https://openfuse-registry.wzmcghee.workers.dev";
+// Registry API lives on .dev (product layer). DNS TXT records on .net (protocol layer).
+export const DEFAULT_REGISTRY = "https://registry.openfused.dev";
 
 export interface Manifest {
   name: string;
