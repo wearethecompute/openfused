@@ -10,7 +10,7 @@ import { fingerprint } from "./crypto.js";
 import { resolve, join } from "node:path";
 import { readFile } from "node:fs/promises";
 
-const VERSION = "0.3.8";
+const VERSION = "0.3.9";
 
 const program = new Command();
 
