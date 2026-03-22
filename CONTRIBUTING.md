@@ -3,7 +3,7 @@
 ## Getting Started
 
 ```bash
-git clone https://github.com/wearethecompute/openfused.git
+git clone https://github.com/openfused/openfused.git
 cd openfused
 npm install
 npm run build

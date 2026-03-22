@@ -10,7 +10,7 @@ No vendor lock-in. No proprietary protocol. Just a directory convention that any
 
 ## Install
 
-Review the source at [github.com/wearethecompute/openfused](https://github.com/wearethecompute/openfused) before installing.
+Review the source at [github.com/openfused/openfused](https://github.com/openfused/openfused) before installing.
 
 ```bash
 # TypeScript (npm) — package: openfused

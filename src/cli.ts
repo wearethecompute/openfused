@@ -75,7 +75,7 @@ program
 
     const latest = await registry.checkUpdate(VERSION);
     if (latest) {
-      console.error(`\n  Update available: ${VERSION} → ${latest} — https://github.com/wearethecompute/openfused/releases`);
+      console.error(`\n  Update available: ${VERSION} → ${latest} — https://github.com/openfused/openfused/releases`);
     }
   });
 

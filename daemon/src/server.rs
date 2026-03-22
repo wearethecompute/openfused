@@ -98,20 +98,45 @@ async fn read_file(
 }
 
 /// Serve outbox messages addressed to a specific agent.
-/// This lets remote agents poll for replies without needing SSH access.
-/// Only returns messages matching _to-{name}.json — you can't read other agents' mail.
-///
-/// Unauthenticated by design: the caller proves nothing about their identity.
-/// Privacy relies on encryption — plaintext broadcasts (_to-all) are exposed to anyone
-/// who can reach this endpoint. Safe because messages SHOULD be age-encrypted for the
-/// recipient; if they aren't, the sender accepted the risk.
+/// Authenticated: caller must prove they own the name via Ed25519 signature challenge.
+/// Headers: X-OpenFuse-PublicKey, X-OpenFuse-Signature, X-OpenFuse-Timestamp
+/// Signature covers: "OUTBOX:{name}:{timestamp}"
+/// Timestamp must be within 5 minutes to prevent replay.
 async fn get_outbox(
     State(store): State<Arc<ContextStore>>,
     Path(name): Path<String>,
-) -> Json<Vec<serde_json::Value>> {
-    // Strip everything except safe chars to prevent path traversal via the URL parameter.
-    // The suffix match below further constrains which files are returned.
+    headers: axum::http::HeaderMap,
+) -> Result<Json<Vec<serde_json::Value>>, StatusCode> {
     let safe_name = name.replace(|c: char| !c.is_alphanumeric() && c != '-' && c != '_', "");
+
+    // Extract auth headers
+    let pubkey_hex = headers.get("x-openfuse-publickey")
+        .and_then(|v| v.to_str().ok())
+        .ok_or(StatusCode::UNAUTHORIZED)?;
+    let sig_b64 = headers.get("x-openfuse-signature")
+        .and_then(|v| v.to_str().ok())
+        .ok_or(StatusCode::UNAUTHORIZED)?;
+    let timestamp = headers.get("x-openfuse-timestamp")
+        .and_then(|v| v.to_str().ok())
+        .ok_or(StatusCode::UNAUTHORIZED)?;
+
+    // Verify timestamp is within 5 minutes (prevents replay)
+    if let Ok(ts) = chrono::DateTime::parse_from_rfc3339(timestamp) {
+        let age = chrono::Utc::now().signed_duration_since(ts);
+        if age.num_seconds().abs() > 300 {
+            return Err(StatusCode::UNAUTHORIZED);
+        }
+    } else {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+
+    // Verify signature: payload = "OUTBOX:{name}:{timestamp}"
+    let challenge = format!("OUTBOX:{}:{}", safe_name, timestamp);
+    if !verify_challenge(&challenge, sig_b64, pubkey_hex) {
+        return Err(StatusCode::FORBIDDEN);
+    }
+
+    // Collect messages addressed to this name
     let outbox_dir = store.root.join("outbox");
     let mut messages = vec![];
 
@@ -128,7 +153,7 @@ async fn get_outbox(
         }
     }
 
-    Json(messages)
+    Ok(Json(messages))
 }
 
 /// Receive a signed message into the inbox.
@@ -169,6 +194,18 @@ async fn receive_inbox(
     // Trust verification happens at read-time via the keyring, not at delivery-time.
     tracing::info!("Received signed message from: {}", from);
     Ok(StatusCode::CREATED)
+}
+
+/// Verify a raw challenge string signed with Ed25519.
+/// Used for outbox authentication — caller signs "OUTBOX:{name}:{timestamp}" to prove identity.
+fn verify_challenge(challenge: &str, sig_b64: &str, pubkey_hex: &str) -> bool {
+    let Ok(key_bytes) = hex::decode(pubkey_hex.trim()) else { return false };
+    let Ok(arr): Result<[u8; 32], _> = key_bytes.try_into() else { return false };
+    let Ok(verifying_key) = VerifyingKey::from_bytes(&arr) else { return false };
+    let Ok(sig_bytes) = BASE64.decode(sig_b64) else { return false };
+    let Ok(sig_arr): Result<[u8; 64], _> = sig_bytes.try_into() else { return false };
+    let signature = Signature::from_bytes(&sig_arr);
+    verifying_key.verify(challenge.as_bytes(), &signature).is_ok()
 }
 
 /// Verify Ed25519 signature: payload = "{from}\n{timestamp}\n{message}"

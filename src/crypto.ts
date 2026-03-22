@@ -103,6 +103,15 @@ async function loadAgeIdentity(storeRoot: string): Promise<string> {
   return (await readFile(join(storeRoot, KEY_DIR, "age.key"), "utf-8")).trim();
 }
 
+/** Sign a raw challenge string — used for outbox authentication.
+ * Returns { signature, publicKey } without the full SignedMessage envelope. */
+export async function signChallenge(storeRoot: string, challenge: string): Promise<{ signature: string; publicKey: string }> {
+  const privateKey = await loadPrivateKey(storeRoot);
+  const publicKey = await loadPublicKeyHex(storeRoot);
+  const signature = sign(null, Buffer.from(challenge), privateKey).toString("base64");
+  return { signature, publicKey };
+}
+
 export async function signMessage(storeRoot: string, from: string, message: string): Promise<SignedMessage> {
   const privateKey = await loadPrivateKey(storeRoot);
   const publicKey = await loadPublicKeyHex(storeRoot);

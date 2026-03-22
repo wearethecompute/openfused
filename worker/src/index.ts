@@ -39,7 +39,7 @@ export default {
           version: "0.4.0",
           latest: "0.3.4",
           dns: `*.${env.DNS_DOMAIN}`,
-          changelog: "https://github.com/wearethecompute/openfused/releases",
+          changelog: "https://github.com/openfused/openfused/releases",
           discovery: "dig TXT _openfuse.{name}.openfused.net",
         });
       }

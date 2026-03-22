@@ -180,15 +180,25 @@ async function syncHttp(
   }
 
   // Pull peer's outbox for messages addressed to us (HTTP version).
-  // The peer's daemon filters to _to-{myName}.json, but the JSON body is untrusted —
-  // a malicious peer controls every field. We must sanitize before using any value
-  // in a filename to prevent path traversal (e.g. from="../../.keys/evil").
+  // Authenticated: we sign a challenge proving we own this name, so the daemon
+  // only serves outbox to the actual recipient. Prevents metadata enumeration.
   const config = await store.readConfig();
   const myName = config.name;
   const inboxDir = join(store.root, "inbox");
   await mkdir(inboxDir, { recursive: true });
   try {
-    const resp = await fetch(`${baseUrl}/outbox/${myName}`);
+    const { signChallenge } = await import("./crypto.js");
+    const timestamp = new Date().toISOString();
+    const challenge = `OUTBOX:${myName}:${timestamp}`;
+    const { signature, publicKey } = await signChallenge(store.root, challenge);
+
+    const resp = await fetch(`${baseUrl}/outbox/${myName}`, {
+      headers: {
+        "X-OpenFuse-PublicKey": publicKey,
+        "X-OpenFuse-Signature": signature,
+        "X-OpenFuse-Timestamp": timestamp,
+      },
+    });
     if (resp.ok) {
       const messages = (await resp.json()) as any[];
       for (const msg of messages) {

@@ -4,7 +4,7 @@ version = "0.3.12"
 edition = "2021"
 description = "FUSE daemon for OpenFused — encrypted agent-to-agent messaging"
 license = "MIT"
-repository = "https://github.com/wearethecompute/openfused"
+repository = "https://github.com/openfused/openfused"
 
 [dependencies]
 fuser = "0.15"

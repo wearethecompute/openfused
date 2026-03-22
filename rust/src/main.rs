@@ -264,7 +264,7 @@ async fn main() -> Result<()> {
 
             // Check for updates (non-blocking, best-effort)
             if let Some(latest) = registry::check_update(VERSION).await {
-                eprintln!("\n  Update available: {} → {} — https://github.com/wearethecompute/openfused/releases", VERSION, latest);
+                eprintln!("\n  Update available: {} → {} — https://github.com/openfused/openfused/releases", VERSION, latest);
             }
         }
 

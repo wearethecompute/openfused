@@ -4,8 +4,8 @@ version = "0.3.12"
 edition = "2021"
 description = "The file protocol for AI agent context — sync, encrypt, sign"
 license = "MIT"
-repository = "https://github.com/wearethecompute/openfused"
-homepage = "https://github.com/wearethecompute/openfused"
+repository = "https://github.com/openfused/openfused"
+homepage = "https://github.com/openfused/openfused"
 keywords = ["ai", "agent", "context", "messaging", "llm"]
 
 [[bin]]

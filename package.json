@@ -40,9 +40,9 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/wearethecompute/openfused.git"
+    "url": "git+https://github.com/openfused/openfused.git"
   },
-  "homepage": "https://github.com/wearethecompute/openfused",
+  "homepage": "https://github.com/openfused/openfused",
   "keywords": [
     "ai",
     "agent",
