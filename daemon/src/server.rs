@@ -143,39 +143,8 @@ async fn get_outbox(
         return Err(StatusCode::FORBIDDEN);
     }
 
-    // Verify the public key belongs to this agent — check inbox for messages
-    // from them with the same publicKey. This proves the caller is the same entity
-    // that previously messaged us, not a random keypair claiming to be them.
-    let mut key_known = false;
-    let inbox_dir = store.root.join("inbox");
-    if let Ok(mut entries) = tokio::fs::read_dir(&inbox_dir).await {
-        while let Ok(Some(entry)) = entries.next_entry().await {
-            let fname = entry.file_name().to_string_lossy().to_string();
-            if !fname.contains(&format!("_from-{}", safe_name)) { continue; }
-            if let Ok(content) = tokio::fs::read_to_string(entry.path()).await {
-                if let Ok(msg) = serde_json::from_str::<serde_json::Value>(&content) {
-                    if msg["publicKey"].as_str() == Some(pubkey_hex) {
-                        key_known = true;
-                        break;
-                    }
-                }
-            }
-        }
-    }
-    // Also check .mesh.json keyring and legacy trusted_keys
-    if !key_known {
-        if let Some(config) = store.config().await {
-            // v0.2+ keyring: match name + signing key
-            if config.keyring.iter().any(|k| k.name == safe_name && k.signing_key == pubkey_hex) {
-                key_known = true;
-            }
-            // Legacy trusted_keys list
-            if !key_known && config.trusted_keys.contains(&pubkey_hex.to_string()) {
-                key_known = true;
-            }
-        }
-    }
-    if !key_known {
+    // Verify the public key belongs to this agent
+    if !verify_key_ownership(&store, &safe_name, pubkey_hex).await {
         tracing::warn!("Outbox auth rejected: unknown public key for agent '{}'", safe_name);
         return Err(StatusCode::FORBIDDEN);
     }
@@ -238,6 +207,12 @@ async fn ack_outbox(
         return Err(StatusCode::FORBIDDEN);
     }
 
+    // Verify key belongs to this agent — same check as GET /outbox
+    if !verify_key_ownership(&store, &safe_name, pubkey_hex).await {
+        tracing::warn!("ACK rejected: unknown public key for agent '{}'", safe_name);
+        return Err(StatusCode::FORBIDDEN);
+    }
+
     // Move to .sent/
     let outbox_dir = store.root.join("outbox");
     let src = outbox_dir.join(&safe_file);
@@ -291,6 +266,39 @@ async fn receive_inbox(
     // Trust verification happens at read-time via the keyring, not at delivery-time.
     tracing::info!("Received signed message from: {}", from);
     Ok(StatusCode::CREATED)
+}
+
+/// Verify a public key belongs to the claimed agent name by checking:
+/// 1. Inbox messages from this agent with matching publicKey
+/// 2. Keyring entries matching name + signing key
+/// 3. Legacy trusted_keys list
+/// Without this, any random keypair could impersonate a registered agent.
+async fn verify_key_ownership(store: &Arc<ContextStore>, name: &str, pubkey_hex: &str) -> bool {
+    // Check inbox for messages from this agent with matching key
+    let inbox_dir = store.root.join("inbox");
+    if let Ok(mut entries) = tokio::fs::read_dir(&inbox_dir).await {
+        while let Ok(Some(entry)) = entries.next_entry().await {
+            let fname = entry.file_name().to_string_lossy().to_string();
+            if !fname.contains(&format!("_from-{}", name)) { continue; }
+            if let Ok(content) = tokio::fs::read_to_string(entry.path()).await {
+                if let Ok(msg) = serde_json::from_str::<serde_json::Value>(&content) {
+                    if msg["publicKey"].as_str() == Some(pubkey_hex) {
+                        return true;
+                    }
+                }
+            }
+        }
+    }
+    // Check keyring and legacy trusted_keys
+    if let Some(config) = store.config().await {
+        if config.keyring.iter().any(|k| k.name == name && k.signing_key == pubkey_hex) {
+            return true;
+        }
+        if config.trusted_keys.contains(&pubkey_hex.to_string()) {
+            return true;
+        }
+    }
+    false
 }
 
 /// Verify a raw challenge string signed with Ed25519.
