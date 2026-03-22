@@ -23,7 +23,7 @@ jobs:
           npm version $VERSION --no-git-tag-version --allow-same-version
       - run: npm ci
       - run: npm run build
-      - run: npm publish --access public
+      - run: npm publish --access public || echo "Version may already exist on npm"
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
@@ -36,7 +36,7 @@ jobs:
         run: |
           VERSION=${GITHUB_REF_NAME#v}
           sed -i "0,/^version = /s/^version = \".*\"/version = \"$VERSION\"/" rust/Cargo.toml
-      - run: cd rust && cargo publish --allow-dirty
+      - run: cd rust && cargo publish --allow-dirty || echo "Version may already exist on crates.io"
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_TOKEN }}
 
