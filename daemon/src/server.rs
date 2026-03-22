@@ -5,6 +5,8 @@ use axum::{
     routing::{get, post},
     Router,
 };
+use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
+use ed25519_dalek::{Signature, Verifier, VerifyingKey};
 use std::path::PathBuf;
 use std::sync::Arc;
 use tower_http::cors::CorsLayer;
@@ -94,7 +96,8 @@ async fn read_file(
     store.read_file(&path).await.ok_or(StatusCode::NOT_FOUND)
 }
 
-/// Receive a signed message into the inbox
+/// Receive a signed message into the inbox.
+/// Verifies Ed25519 signature before accepting — rejects unsigned or forged messages.
 async fn receive_inbox(
     State(store): State<Arc<ContextStore>>,
     body: String,
@@ -102,11 +105,18 @@ async fn receive_inbox(
     let msg: serde_json::Value =
         serde_json::from_str(&body).map_err(|_| StatusCode::BAD_REQUEST)?;
 
-    if msg.get("from").is_none() || msg.get("signature").is_none() {
-        return Err(StatusCode::BAD_REQUEST);
+    let from = msg["from"].as_str().ok_or(StatusCode::BAD_REQUEST)?;
+    let signature = msg["signature"].as_str().ok_or(StatusCode::BAD_REQUEST)?;
+    let public_key = msg["publicKey"].as_str().ok_or(StatusCode::BAD_REQUEST)?;
+    let timestamp = msg["timestamp"].as_str().ok_or(StatusCode::BAD_REQUEST)?;
+    let message = msg["message"].as_str().ok_or(StatusCode::BAD_REQUEST)?;
+
+    // Verify Ed25519 signature — reject forged or unsigned messages at the door
+    if !verify_signature(from, timestamp, message, signature, public_key) {
+        tracing::warn!("Rejected message with invalid signature from: {}", from);
+        return Err(StatusCode::FORBIDDEN);
     }
 
-    let from = msg["from"].as_str().unwrap_or("unknown");
     let to = store.config().await
         .map(|c| c.name)
         .unwrap_or_else(|| "unknown".to_string());
@@ -120,6 +130,18 @@ async fn receive_inbox(
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    tracing::info!("Received inbox message from: {}", from);
+    tracing::info!("Received verified message from: {}", from);
     Ok(StatusCode::CREATED)
+}
+
+/// Verify Ed25519 signature: payload = "{from}\n{timestamp}\n{message}"
+fn verify_signature(from: &str, timestamp: &str, message: &str, sig_b64: &str, pubkey_hex: &str) -> bool {
+    let Ok(key_bytes) = hex::decode(pubkey_hex.trim()) else { return false };
+    let Ok(arr): Result<[u8; 32], _> = key_bytes.try_into() else { return false };
+    let Ok(verifying_key) = VerifyingKey::from_bytes(&arr) else { return false };
+    let Ok(sig_bytes) = BASE64.decode(sig_b64) else { return false };
+    let Ok(sig_arr): Result<[u8; 64], _> = sig_bytes.try_into() else { return false };
+    let signature = Signature::from_bytes(&sig_arr);
+    let payload = format!("{}\n{}\n{}", from, timestamp, message);
+    verifying_key.verify(payload.as_bytes(), &signature).is_ok()
 }
