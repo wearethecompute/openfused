@@ -6,6 +6,25 @@ use serde::{Deserialize, Serialize};
 
 use crate::crypto::{self, KeyringEntry, SignedMessage};
 
+/// Validate agent/peer names: alphanumeric + hyphens + underscores + dots, 1-64 chars.
+/// Rejects path traversal (../, /, \) and rsync glob chars (*, ?, [).
+pub fn validate_name(name: &str, label: &str) -> Result<()> {
+    if name.is_empty() || name.len() > 64 {
+        anyhow::bail!("{} must be 1-64 characters", label);
+    }
+    let first = name.chars().next().unwrap();
+    if !first.is_ascii_alphanumeric() {
+        anyhow::bail!("{} must start with alphanumeric character", label);
+    }
+    if !name.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.') {
+        anyhow::bail!("{} must contain only a-z, 0-9, -, _, .", label);
+    }
+    if name.contains("..") {
+        anyhow::bail!("{} contains invalid path characters", label);
+    }
+    Ok(())
+}
+
 // Convention: the context store is a plain directory with well-known subdirs.
 // No database, no binary format — just files. Any tool that reads files can
 // participate in the mesh without importing a library.
@@ -198,6 +217,7 @@ impl ContextStore {
 
     /// Send a message to a peer. Encrypts if we have their age key in the keyring.
     pub fn send_inbox(&self, peer_id: &str, message: &str, from: &str) -> Result<()> {
+        validate_name(peer_id, "Recipient name")?;
         let config = self.read_config()?;
 
         // Look up peer's encryption key in keyring

@@ -14,6 +14,7 @@ export type InboxCallback = (from: string, message: string, file: string, verifi
 
 export function watchInbox(storeRoot: string, callback: InboxCallback): () => void {
   const inboxDir = join(storeRoot, "inbox");
+  const store = new ContextStore(storeRoot);
 
   const handleFile = async (filePath: string) => {
     if (!filePath.endsWith(".json") && !filePath.endsWith(".md")) return;
@@ -22,16 +23,29 @@ export function watchInbox(storeRoot: string, callback: InboxCallback): () => vo
 
       const signed = deserializeSignedMessage(raw);
       if (signed) {
-        const verified = verifyMessage(signed);
+        const sigValid = verifyMessage(signed);
+        // Check keyring for trust — not just signature math. Without this,
+        // any random keypair shows as [VERIFIED] in watch mode output.
+        let verified = false;
+        if (sigValid) {
+          try {
+            const config = await store.readConfig();
+            const trusted = config.autoTrust
+              ? config.keyring.some((k) => k.signingKey.trim() === signed.publicKey.trim())
+              : config.keyring.some((k) => k.trusted && k.signingKey.trim() === signed.publicKey.trim());
+            verified = trusted;
+          } catch {}
+        }
         callback(signed.from, wrapExternalMessage(signed, verified), filePath, verified);
         return;
       }
 
-      // Unsigned fallback
+      // Unsigned fallback — escape XML attributes to prevent injection
       const filename = basename(filePath).replace(/\.(md|json)$/, "");
       const parts = filename.split("_");
       const from = parts.slice(1).join("_");
-      const wrapped = `<external_message from="${from}" verified="false" status="UNVERIFIED">\n${raw}\n</external_message>`;
+      const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+      const wrapped = `<external_message from="${esc(from)}" verified="false" status="UNVERIFIED">\n${esc(raw)}\n</external_message>`;
       callback(from, wrapped, filePath, false);
     } catch {}
   };

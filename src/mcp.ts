@@ -10,7 +10,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
-import { ContextStore } from "./store.js";
+import { ContextStore, validateName } from "./store.js";
 import { resolve } from "node:path";
 
 // LLMs will pass whatever filenames users ask for — including "../../etc/shadow".
@@ -28,7 +28,7 @@ const store = new ContextStore(resolve(storeDir));
 
 const server = new McpServer({
   name: "openfuse",
-  version: "0.3.12",
+  version: "0.3.13",
 });
 
 // --- Context ---
@@ -175,6 +175,7 @@ server.tool(
     access: z.enum(["read", "readwrite"]).default("read").describe("Access mode"),
   },
   async ({ url, name, access }) => {
+    validateName(name, "Peer name");
     const { nanoid } = await import("nanoid");
     const config = await store.readConfig();
     const peerId = nanoid(12);

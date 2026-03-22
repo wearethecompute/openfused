@@ -1,8 +1,53 @@
 use anyhow::{Context as _, Result};
 use std::fs;
+use std::net::ToSocketAddrs;
 use std::path::Path;
 
 use crate::store::{ContextStore, PeerConfig};
+
+/// Block SSRF: reject URLs pointing to private/reserved IP ranges.
+/// Resolves the hostname and checks the IP before allowing the request.
+fn check_ssrf(url: &str) -> Result<()> {
+    // Extract hostname from URL (http://host:port/path or https://host/path)
+    let after_scheme = url.split("://").nth(1).unwrap_or("");
+    let host_port = after_scheme.split('/').next().unwrap_or("");
+    let host = if host_port.starts_with('[') {
+        // IPv6 bracket notation
+        host_port.split(']').next().unwrap_or("").trim_start_matches('[')
+    } else {
+        host_port.split(':').next().unwrap_or("")
+    };
+    let port = host_port.rsplit(':').next().and_then(|p| p.parse::<u16>().ok()).unwrap_or(443);
+    // Resolve hostname to IP addresses
+    if let Ok(addrs) = format!("{}:{}", host, port).to_socket_addrs() {
+        for addr in addrs {
+            let ip = addr.ip();
+            if ip.is_loopback() || ip.is_unspecified() {
+                anyhow::bail!("SSRF blocked: {} resolves to loopback/unspecified address", host);
+            }
+            match ip {
+                std::net::IpAddr::V4(v4) => {
+                    if v4.is_private() || v4.is_link_local() || v4.octets()[0] == 169 {
+                        anyhow::bail!("SSRF blocked: {} resolves to private/link-local address {}", host, v4);
+                    }
+                }
+                std::net::IpAddr::V6(v6) => {
+                    // Block ULA (fc00::/7), link-local (fe80::/10), IPv4-mapped private
+                    let segs = v6.segments();
+                    if (segs[0] & 0xfe00) == 0xfc00 || (segs[0] & 0xffc0) == 0xfe80 {
+                        anyhow::bail!("SSRF blocked: {} resolves to private IPv6 address {}", host, v6);
+                    }
+                    if let Some(v4) = v6.to_ipv4_mapped() {
+                        if v4.is_private() || v4.is_loopback() || v4.is_link_local() {
+                            anyhow::bail!("SSRF blocked: {} resolves to IPv4-mapped private address {}", host, v4);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    Ok(())
+}
 
 pub struct SyncResult {
     pub peer_name: String,
@@ -37,10 +82,14 @@ fn parse_url(url: &str) -> Result<Transport> {
         if host.starts_with('-') || path.starts_with('-') {
             anyhow::bail!("Invalid SSH URL: host/path cannot start with '-'");
         }
-        if host.contains(';') || host.contains('|') || host.contains('`') || host.contains('$') {
+        if host.contains(';') || host.contains('|') || host.contains('`') || host.contains('$')
+            || host.contains('&') || host.contains(' ') || host.contains('\n') || host.contains('\r')
+            || host.contains('(') || host.contains(')') {
             anyhow::bail!("Invalid SSH URL: host contains shell metacharacters");
         }
-        if path.contains(';') || path.contains('|') || path.contains('`') || path.contains('$') || path.contains('&') {
+        if path.contains(';') || path.contains('|') || path.contains('`') || path.contains('$')
+            || path.contains('&') || path.contains(' ') || path.contains('\n') || path.contains('\r')
+            || path.contains('(') || path.contains(')') {
             anyhow::bail!("Invalid SSH URL: path contains shell metacharacters");
         }
         Ok(Transport::Ssh {
@@ -101,6 +150,8 @@ async fn sync_http(
     base_url: &str,
     peer_dir: &Path,
 ) -> Result<SyncResult> {
+    // SSRF check: block requests to private/reserved IPs
+    check_ssrf(base_url)?;
     let client = reqwest::Client::new();
     let mut pulled = vec![];
     let mut pushed = vec![];

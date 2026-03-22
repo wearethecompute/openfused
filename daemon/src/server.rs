@@ -9,7 +9,7 @@ use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use ed25519_dalek::{Signature, Verifier, VerifyingKey};
 use std::path::PathBuf;
 use std::sync::Arc;
-use tower_http::cors::CorsLayer;
+use tower_http::cors::{CorsLayer, AllowOrigin};
 
 use crate::store::{ContextStore, FileEntry};
 
@@ -41,7 +41,12 @@ pub async fn serve(store_path: PathBuf, bind: &str, port: u16, public: bool) {
         // 1MB body limit — inbox messages are JSON envelopes, not file transfers.
         // Prevents a malicious peer from filling the disk via POST /inbox.
         .layer(DefaultBodyLimit::max(1024 * 1024))
-        .layer(CorsLayer::permissive())
+        // Restrict CORS: only allow same-origin by default. Permissive CORS on
+        // localhost lets any website exfiltrate agent context via cross-origin requests.
+        .layer(CorsLayer::new()
+            .allow_origin(AllowOrigin::list([]))
+            .allow_methods([axum::http::Method::GET, axum::http::Method::POST])
+            .allow_headers([axum::http::header::CONTENT_TYPE]))
         .with_state(store);
 
     let addr = format!("{}:{}", bind, port);
@@ -52,7 +57,7 @@ pub async fn serve(store_path: PathBuf, bind: &str, port: u16, public: bool) {
 }
 
 async fn root() -> &'static str {
-    "openfused v0.3.12 — agent messaging daemon"
+    "openfused v0.3.13 — agent messaging daemon"
 }
 
 async fn get_config(
@@ -134,6 +139,43 @@ async fn get_outbox(
     // Verify signature: payload = "OUTBOX:{name}:{timestamp}"
     let challenge = format!("OUTBOX:{}:{}", safe_name, timestamp);
     if !verify_challenge(&challenge, sig_b64, pubkey_hex) {
+        return Err(StatusCode::FORBIDDEN);
+    }
+
+    // Verify the public key belongs to this agent — check inbox for messages
+    // from them with the same publicKey. This proves the caller is the same entity
+    // that previously messaged us, not a random keypair claiming to be them.
+    let mut key_known = false;
+    let inbox_dir = store.root.join("inbox");
+    if let Ok(mut entries) = tokio::fs::read_dir(&inbox_dir).await {
+        while let Ok(Some(entry)) = entries.next_entry().await {
+            let fname = entry.file_name().to_string_lossy().to_string();
+            if !fname.contains(&format!("_from-{}", safe_name)) { continue; }
+            if let Ok(content) = tokio::fs::read_to_string(entry.path()).await {
+                if let Ok(msg) = serde_json::from_str::<serde_json::Value>(&content) {
+                    if msg["publicKey"].as_str() == Some(pubkey_hex) {
+                        key_known = true;
+                        break;
+                    }
+                }
+            }
+        }
+    }
+    // Also check .mesh.json keyring and legacy trusted_keys
+    if !key_known {
+        if let Some(config) = store.config().await {
+            // v0.2+ keyring: match name + signing key
+            if config.keyring.iter().any(|k| k.name == safe_name && k.signing_key == pubkey_hex) {
+                key_known = true;
+            }
+            // Legacy trusted_keys list
+            if !key_known && config.trusted_keys.contains(&pubkey_hex.to_string()) {
+                key_known = true;
+            }
+        }
+    }
+    if !key_known {
+        tracing::warn!("Outbox auth rejected: unknown public key for agent '{}'", safe_name);
         return Err(StatusCode::FORBIDDEN);
     }
 

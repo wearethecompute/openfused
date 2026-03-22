@@ -43,6 +43,21 @@ export interface PeerConfig {
 
 const STORE_DIRS = ["history", "knowledge", "inbox", "outbox", "shared", ".peers"];
 
+/** Validate agent/peer names: alphanumeric + hyphens + underscores + dots, 1-64 chars.
+ *  Rejects path traversal (../, /, \) and rsync glob chars (*, ?, [). */
+export function validateName(name: string, label = "Name"): string {
+  if (!name || name.length < 1 || name.length > 64) {
+    throw new Error(`${label} must be 1-64 characters`);
+  }
+  if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(name)) {
+    throw new Error(`${label} must start with alphanumeric and contain only a-z, 0-9, -, _, .`);
+  }
+  if (name.includes("..") || name.includes("/") || name.includes("\\")) {
+    throw new Error(`${label} contains invalid path characters`);
+  }
+  return name;
+}
+
 export class ContextStore {
   readonly root: string;
 
@@ -220,6 +235,7 @@ export class ContextStore {
   // --- Inbox ---
 
   async sendInbox(peerId: string, message: string): Promise<string> {
+    validateName(peerId, "Recipient name");
     const config = await this.readConfig();
 
     // Look up peer's encryption key in keyring

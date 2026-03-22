@@ -8,13 +8,13 @@ use anyhow::Result;
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 
-const VERSION: &str = "0.3.12";
+const VERSION: &str = "0.3.13";
 
 #[derive(Parser)]
 #[command(
     name = "openfuse",
     about = "The file protocol for AI agent context. Encrypted, signed, peer-to-peer.",
-    version = "0.3.12"
+    version = "0.3.13"
 )]
 struct Cli {
     #[command(subcommand)]
@@ -227,6 +227,7 @@ async fn main() -> Result<()> {
 
     match cli.command {
         Commands::Init { name, dir } => {
+            store::validate_name(&name, "Agent name")?;
             let dir = dir.canonicalize().unwrap_or(dir.clone());
             let s = store::ContextStore::new(&dir);
             if s.exists() {
@@ -385,6 +386,7 @@ async fn main() -> Result<()> {
                 let peer_id = nanoid::nanoid!(12);
                 let peer_name =
                     name.clone().unwrap_or_else(|| format!("peer-{}", config.peers.len() + 1));
+                store::validate_name(&peer_name, "Peer name")?;
                 config.peers.push(store::PeerConfig {
                     id: peer_id,
                     name: peer_name.clone(),
@@ -652,9 +654,9 @@ async fn main() -> Result<()> {
             let sig_status = if revoked {
                 "[REVOKED]"
             } else if verified {
-                "[SIGNED ✓]"
+                "[SIGNED — verify fingerprint before trusting]"
             } else if manifest.signature.is_some() {
-                "[SIGNED ✗ invalid]"
+                "[SIGNED — invalid signature]"
             } else {
                 "[unsigned]"
             };
@@ -691,6 +693,7 @@ async fn main() -> Result<()> {
                 eprintln!("No context store found. Run `openfuse init` first.");
                 std::process::exit(1);
             }
+            store::validate_name(&name, "Recipient name")?;
             let config = s.read_config()?;
 
             // Try to resolve via registry first

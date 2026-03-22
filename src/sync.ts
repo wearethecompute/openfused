@@ -9,7 +9,31 @@ import { join } from "node:path";
 import { existsSync } from "node:fs";
 import { execFile as execFileCb } from "node:child_process";
 import { promisify } from "node:util";
+import dns from "node:dns/promises";
 import { ContextStore } from "./store.js";
+
+/** Block SSRF: reject URLs pointing to private/reserved IP ranges. */
+export async function checkSsrf(url: string): Promise<void> {
+  const parsed = new URL(url);
+  const hostname = parsed.hostname.replace(/^\[|\]$/g, ""); // strip IPv6 brackets
+  try {
+    const { address } = await dns.lookup(hostname);
+    const parts = address.split(".").map(Number);
+    if (
+      address === "127.0.0.1" || address === "::1" || address === "0.0.0.0" ||
+      parts[0] === 10 ||
+      (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) ||
+      (parts[0] === 192 && parts[1] === 168) ||
+      (parts[0] === 169 && parts[1] === 254) ||
+      address.startsWith("fc") || address.startsWith("fd") || address.startsWith("fe80")
+    ) {
+      throw new Error(`SSRF blocked: ${hostname} resolves to private address ${address}`);
+    }
+  } catch (e: any) {
+    if (e.message.startsWith("SSRF blocked")) throw e;
+    // DNS resolution failed — allow (could be .local or SSH alias)
+  }
+}
 
 const execFile = promisify(execFileCb);
 
@@ -49,10 +73,10 @@ function parseUrl(url: string): Transport {
     if (host.startsWith("-") || path.startsWith("-")) {
       throw new Error("Invalid SSH URL: host/path cannot start with '-'");
     }
-    if (/[;|`$]/.test(host)) {
+    if (/[;|`$&(){}\s\n\r]/.test(host)) {
       throw new Error("Invalid SSH URL: host contains shell metacharacters");
     }
-    if (/[;|`$&(){}]/.test(path)) {
+    if (/[;|`$&(){}\s\n\r]/.test(path)) {
       throw new Error("Invalid SSH URL: path contains shell metacharacters");
     }
     return { type: "ssh", host, path };
@@ -74,6 +98,7 @@ export async function deliverOne(store: ContextStore, peerName: string, filename
     const transport = parseUrl(peer.url);
 
     if (transport.type === "http") {
+      await checkSsrf(transport.baseUrl!);
       const body = await readFile(filePath, "utf-8");
       const r = await fetch(`${transport.baseUrl}/inbox`, {
         method: "POST",
@@ -142,6 +167,9 @@ async function syncHttp(
   const pulled: string[] = [];
   const pushed: string[] = [];
   const errors: string[] = [];
+
+  // SSRF check: block requests to private/reserved IPs
+  await checkSsrf(baseUrl);
 
   for (const file of ["CONTEXT.md", "PROFILE.md"]) {
     try {

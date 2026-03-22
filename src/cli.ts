@@ -2,7 +2,7 @@
 
 import { Command } from "commander";
 import { nanoid } from "nanoid";
-import { ContextStore } from "./store.js";
+import { ContextStore, validateName } from "./store.js";
 import { watchInbox, watchContext, watchSync } from "./watch.js";
 import { syncAll, syncOne, deliverOne } from "./sync.js";
 import * as registry from "./registry.js";
@@ -11,7 +11,7 @@ import { resolve, join } from "node:path";
 import { readFile } from "node:fs/promises";
 import { parseValiditySections, buildValidityReport } from "./validity.js";
 
-const VERSION = "0.3.12";
+const VERSION = "0.3.13";
 
 const program = new Command();
 
@@ -34,6 +34,7 @@ program
       process.exit(1);
     }
     const id = nanoid(12);
+    validateName(opts.name, "Agent name");
     if (opts.workspace) {
       await store.initWorkspace(opts.name, id);
       console.log(`Initialized shared workspace: ${store.root}`);
@@ -218,6 +219,16 @@ program
       const { spawn } = await import("node:child_process");
       const tunnelPort = opts.tunnelPort;
       const tunnelHost = opts.tunnel;
+
+      // Prevent SSH option injection: reject values that look like flags
+      if (tunnelHost.startsWith("-") || /\s/.test(tunnelHost)) {
+        console.error("Invalid --tunnel value: must be a hostname, not flags");
+        process.exit(1);
+      }
+      if (tunnelPort.startsWith("-") || /\s/.test(tunnelPort) || !/^\d+$/.test(tunnelPort)) {
+        console.error("Invalid --tunnel-port value: must be a numeric port");
+        process.exit(1);
+      }
 
       // Try autossh first, fall back to ssh
       const cmd = await (async () => {
@@ -415,14 +426,16 @@ peer
     const store = new ContextStore(resolve(opts.dir));
     const config = await store.readConfig();
     const peerId = nanoid(12);
+    const peerName = opts.name ?? `peer-${config.peers.length + 1}`;
+    validateName(peerName, "Peer name");
     config.peers.push({
       id: peerId,
-      name: opts.name ?? `peer-${config.peers.length + 1}`,
+      name: peerName,
       url,
       access: opts.access as "read" | "readwrite",
     });
     await store.writeConfig(config);
-    console.log(`Added peer: ${opts.name ?? peerId} (${url}) [${opts.access}]`);
+    console.log(`Added peer: ${peerName} (${url}) [${opts.access}]`);
   });
 
 peer
@@ -685,6 +698,9 @@ program
       // Try direct HTTP delivery if endpoint is http(s)
       if (manifest.endpoint.startsWith("http")) {
         try {
+          // SSRF check: registry endpoints are attacker-controlled
+          const { checkSsrf } = await import("./sync.js");
+          await checkSsrf(manifest.endpoint);
           const body = await readFile(join(store.root, "outbox", filename), "utf-8");
           const r = await fetch(`${manifest.endpoint.replace(/\/$/, "")}/inbox`, {
             method: "POST",

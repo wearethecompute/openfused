@@ -3,6 +3,23 @@ use std::path::PathBuf;
 use tokio::fs;
 
 #[derive(Debug, Serialize, Deserialize)]
+pub struct KeyringEntry {
+    pub name: String,
+    #[serde(default)]
+    pub address: String,
+    #[serde(rename = "signingKey")]
+    pub signing_key: String,
+    #[serde(default, rename = "encryptionKey")]
+    pub encryption_key: Option<String>,
+    #[serde(default)]
+    pub fingerprint: String,
+    #[serde(default)]
+    pub trusted: bool,
+    #[serde(default)]
+    pub added: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
 pub struct MeshConfig {
     pub id: String,
     pub name: String,
@@ -14,6 +31,8 @@ pub struct MeshConfig {
     pub encryption_key: Option<String>,
     #[serde(default)]
     pub peers: Vec<PeerConfig>,
+    #[serde(default)]
+    pub keyring: Vec<KeyringEntry>,
     #[serde(default)]
     pub trusted_keys: Vec<String>,
 }

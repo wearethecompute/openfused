@@ -101,6 +101,19 @@ async function register(env: Env, body: string): Promise<Response> {
     return json({ error: "Missing required fields" }, 400);
   }
 
+  // Validate field formats — prevent TXT record injection via spaces/= in values
+  if (/[\s=]/.test(req.publicKey)) return json({ error: "publicKey contains invalid characters" }, 400);
+  if (/[\s=]/.test(req.fingerprint)) return json({ error: "fingerprint contains invalid characters" }, 400);
+  if (req.encryptionKey && /[\s=]/.test(req.encryptionKey)) return json({ error: "encryptionKey contains invalid characters" }, 400);
+  // publicKey: must be 64-char hex (Ed25519)
+  if (!/^[0-9a-fA-F]{64}$/.test(req.publicKey)) return json({ error: "publicKey must be 64-char hex" }, 400);
+  // fingerprint: SHA-256 hex
+  if (!/^[0-9a-fA-F]{64}$/.test(req.fingerprint)) return json({ error: "fingerprint must be 64-char hex" }, 400);
+  // encryptionKey: age public key format
+  if (req.encryptionKey && !/^age1[a-z0-9]{58}$/.test(req.encryptionKey)) return json({ error: "encryptionKey must be a valid age public key" }, 400);
+  // endpoint: no spaces allowed (URL is already validated above, but belt-and-suspenders)
+  if (/\s/.test(req.endpoint)) return json({ error: "endpoint contains whitespace" }, 400);
+
   const safeName = req.name.replace(/[^a-zA-Z0-9_-]/g, "");
   if (safeName !== req.name) return json({ error: "Name: a-z, 0-9, -, _ only" }, 400);
   if (safeName.length > 64) return json({ error: "Name too long (max 64)" }, 400);
@@ -114,6 +127,12 @@ async function register(env: Env, body: string): Promise<Response> {
     }
   } catch {
     return json({ error: "Invalid endpoint URL" }, 400);
+  }
+
+  // Reject stale signatures — prevents replay of captured registration requests
+  const signedAge = Date.now() - new Date(req.signedAt).getTime();
+  if (isNaN(signedAge) || Math.abs(signedAge) > 5 * 60 * 1000) {
+    return json({ error: "Signature expired — signedAt must be within 5 minutes" }, 403);
   }
 
   // Verify Ed25519 signature
@@ -137,13 +156,19 @@ async function register(env: Env, body: string): Promise<Response> {
   // Block private/loopback IPs to prevent SSRF against internal services.
   try {
     const endpointUrl = new URL(req.endpoint);
-    const hostname = endpointUrl.hostname;
-    if (/^(127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|0\.|localhost|::1|\[::1\])/.test(hostname)) {
+    const hostname = endpointUrl.hostname.replace(/^\[|\]$/g, "");
+    // Block private/reserved IPs including IPv6 ULA, link-local, IPv4-mapped, decimal encoding
+    if (/^(127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|0\.|169\.254\.|localhost$|::1$|0\.0\.0\.0$)/.test(hostname)
+      || /^(fc|fd|fe80)/i.test(hostname)
+      || /^::ffff:(127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(hostname)
+      || /^\d+$/.test(hostname)) {  // decimal IP encoding (e.g., 2130706433 = 127.0.0.1)
       return json({ error: "Endpoint verification failed" }, 422);
     }
+    // Follow redirects disabled — prevents redirect-based SSRF bypass
     const probe = await fetch(`${req.endpoint.replace(/\/$/, "")}/profile`, {
       method: "HEAD",
       signal: AbortSignal.timeout(5000),
+      redirect: "error",
     });
     if (!probe.ok) {
       return json({ error: "Endpoint verification failed" }, 422);
@@ -186,6 +211,12 @@ async function revoke(env: Env, body: string): Promise<Response> {
 
   const fields = parseTxt(existing);
   if (!fields.pk) return json({ error: "Corrupted DNS record" }, 500);
+
+  // Reject stale signatures — prevents replay of captured revocation requests
+  const signedAge = Date.now() - new Date(req.signedAt).getTime();
+  if (isNaN(signedAge) || Math.abs(signedAge) > 5 * 60 * 1000) {
+    return json({ error: "Signature expired — signedAt must be within 5 minutes" }, 403);
+  }
 
   // Verify revocation is signed by the registered key
   const payload = `${req.name}\n${req.signedAt}\nREVOKE:${fields.pk}`;
