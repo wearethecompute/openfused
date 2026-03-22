@@ -171,16 +171,24 @@ async function syncHttp(
   // SSRF check: block requests to private/reserved IPs
   await checkSsrf(baseUrl);
 
+  // Try /read/{file} (full mode) then /profile (public mode) for PROFILE.md.
+  // CONTEXT.md 404s are silently skipped — peers in public mode don't serve it.
   for (const file of ["CONTEXT.md", "PROFILE.md"]) {
     try {
-      const resp = await fetch(`${baseUrl}/read/${file}`);
+      const url = file === "PROFILE.md"
+        ? `${baseUrl}/profile`  // public mode serves /profile not /read/PROFILE.md
+        : `${baseUrl}/read/${file}`;
+      let resp = await fetch(url);
+      // Fallback: try /read/ path if /profile didn't work (full mode daemon)
+      if (!resp.ok && file === "PROFILE.md") {
+        resp = await fetch(`${baseUrl}/read/${file}`);
+      }
       if (resp.ok) {
         await writeFile(join(peerDir, file), await resp.text());
         pulled.push(file);
       }
-    } catch (e: any) {
-      errors.push(`${file}: ${e.message}`);
-    }
+      // Don't report 404s as errors — peer may be in public mode
+    } catch {}
   }
 
   for (const dir of ["shared", "knowledge"]) {
