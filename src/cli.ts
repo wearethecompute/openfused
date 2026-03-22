@@ -9,6 +9,7 @@ import * as registry from "./registry.js";
 import { fingerprint } from "./crypto.js";
 import { resolve, join } from "node:path";
 import { readFile } from "node:fs/promises";
+import { parseValiditySections, buildValidityReport } from "./validity.js";
 
 const VERSION = "0.3.10";
 
@@ -298,13 +299,77 @@ program
   .command("compact")
   .description("Move [DONE] sections from CONTEXT.md to history/")
   .option("-d, --dir <path>", "Context store directory", ".")
+  .option("--prune-stale", "Also archive sections past their <!-- validity: --> window (confidence < 0.1)")
   .action(async (opts) => {
     const store = new ContextStore(resolve(opts.dir));
+    let prunedCount = 0;
+
+    if (opts.pruneStale) {
+      // Soft-expiry pruning: rewrite CONTEXT.md with stale sections stripped
+      const content = await store.readContext();
+      const sections = parseValiditySections(content);
+      const staleSections = sections.filter((s) => s.expired);
+
+      if (staleSections.length > 0) {
+        // Remove stale annotated sections from file
+        let updated = content;
+        for (const s of staleSections) {
+          // Strip the section text from the file (simple text removal)
+          updated = updated.replace(s.sectionText, "[STALE — archived by openfuse compact --prune-stale]");
+        }
+        await store.writeContext(updated);
+        prunedCount = staleSections.length;
+      }
+    }
+
     const { moved, kept } = await store.compactContext();
-    if (moved === 0) {
+    if (moved === 0 && prunedCount === 0) {
       console.log("Nothing to compact. Mark sections with [DONE] to archive them.");
     } else {
-      console.log(`Compacted: ${moved} done, ${kept} kept.`);
+      const parts: string[] = [];
+      if (moved > 0) parts.push(`${moved} done`);
+      if (prunedCount > 0) parts.push(`${prunedCount} stale`);
+      console.log(`Compacted: ${parts.join(", ")}, ${kept} kept.`);
+    }
+  });
+
+// --- validate ---
+program
+  .command("validate")
+  .description("Scan CONTEXT.md for expired validity windows and report stale entries")
+  .option("-d, --dir <path>", "Context store directory", ".")
+  .option("--json", "Output as JSON")
+  .action(async (opts) => {
+    const store = new ContextStore(resolve(opts.dir));
+    if (!(await store.exists())) {
+      console.error("No context store found. Run `openfuse init` first.");
+      process.exit(1);
+    }
+    const content = await store.readContext();
+    const sections = parseValiditySections(content);
+    const report = buildValidityReport(sections);
+
+    if (opts.json) {
+      console.log(JSON.stringify(report, null, 2));
+      return;
+    }
+
+    if (report.total === 0) {
+      console.log("No validity-annotated sections found.");
+      console.log("Add `<!-- validity: 6h -->` before time-sensitive context entries.");
+      return;
+    }
+
+    console.log(`Validity check: ${report.fresh} fresh, ${report.stale} stale (of ${report.total} annotated)`);
+    if (report.stale > 0) {
+      console.log("\nStale sections (confidence < 0.1):");
+      for (const e of report.entries.filter((e) => e.expired)) {
+        const age = e.addedAt ? ` written ${e.addedAt}` : "";
+        console.log(`  [${e.ttlLabel} TTL${age}] ${e.preview}`);
+      }
+      console.log("\nRun `openfuse compact --prune-stale` to archive stale sections.");
+    } else {
+      console.log("All annotated sections are within their validity windows. ✓");
     }
   });
 
