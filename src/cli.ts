@@ -11,7 +11,8 @@ import { resolve, join } from "node:path";
 import { readFile } from "node:fs/promises";
 import { parseValiditySections, buildValidityReport } from "./validity.js";
 
-const VERSION = "0.3.13";
+import { createRequire } from "node:module";
+const VERSION = createRequire(import.meta.url)("../package.json").version;
 
 const program = new Command();
 

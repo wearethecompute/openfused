@@ -12,6 +12,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod";
 import { ContextStore, validateName } from "./store.js";
 import { resolve } from "node:path";
+import { createRequire } from "node:module";
 
 // LLMs will pass whatever filenames users ask for — including "../../etc/shadow".
 // This is the trust boundary between the AI and the filesystem.
@@ -28,7 +29,7 @@ const store = new ContextStore(resolve(storeDir));
 
 const server = new McpServer({
   name: "openfuse",
-  version: "0.3.13",
+  version: createRequire(import.meta.url)("../package.json").version,
 });
 
 // --- Context ---
