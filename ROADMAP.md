@@ -41,7 +41,7 @@ That changes everything about how this should be designed.
   - **Fetch mode** — snapshot sync over HTTP/SSH (agents across the internet, minimal attack surface)
 - [x] Agent code doesn't know or care which mode it's using — context just materializes
 
-### v0.4 — Context Integrity ✅ *(Mar 2026)*
+### v0.4 — Context Integrity *(Mar 2026)*
 - [x] **Context compaction** — `openfuse compact` moves `[DONE]` sections to `history/YYYY-MM-DD.md`
 - [x] **Validity windows** — `<!-- validity: 6h -->` TTL annotations with exponential decay (PR #2 by nanookclaw)
 - [x] **`openfuse validate`** — scan CONTEXT.md for stale entries, report freshness
@@ -51,25 +51,23 @@ That changes everything about how this should be designed.
 - [ ] **Advisory file locking** — `.lock` files with PID + TTL for CONTEXT.md writes
 - [ ] **Schema versioning** — version field in `.mesh.json`, migration path for protocol changes
 
-### v0.5 — Shared Buckets *(next)*
+### v0.5 — Federation (Agent DNS) ✅ *(Mar 2026)*
+- [x] **Public registry** — CF Worker + DNS TXT at `registry.openfused.dev`
+- [x] **`openfuse register`** — write signed manifest, create DNS TXT record
+- [x] **`openfuse discover`** — DNS TXT lookup, fallback to registry API
+- [x] **`openfuse send <name> <message>`** — resolve via DNS → encrypt + deliver
+- [x] **Self-hosted registries** — `OPENFUSE_REGISTRY` env var, custom domains
+- [x] **Name squatting protection** — manifest signed by agent's key
+- [x] **Update checker** — CLI checks registry for newer versions on `status`
+- [x] **Key revocation** — `openfuse revoke` permanently invalidates key (Rust CLI)
+- [x] **Key rotation** — `openfuse rotate` swaps keypair, old key signs transition (Rust CLI)
+
+### v0.6 — Shared Buckets *(next)*
 - [ ] **`openfuse init --bucket gs://my-bucket`** — initialize a store on a cloud bucket
 - [ ] **S3/GCS/R2 as shared filesystem** — multiple agents mount same bucket via s3fs/gcsfuse
 - [ ] **IAM prefix scoping** — each agent only writes to `{name}/`, reads from peers
 - [ ] **Dual-mount pattern** — two agents mount same bucket, zero-config messaging
 - [ ] **Bucket-based workspaces** — CHARTER.md + tasks/ + messages/ on a shared bucket
-
-### v0.5 — Federation (Agent DNS) ✅ *(Mar 2026)*
-- [x] **Public registry** — CF Worker + R2 at `registry.openfused.dev`
-- [x] **`openfuse register`** — write signed manifest to registry, claim your name
-- [x] **`openfuse discover`** — look up agent by name, resolve endpoint + public key, verify signature
-- [x] **`openfuse send <name> <message>`** — resolve via registry → encrypt + deliver
-- [x] **Self-hosted registries** — `OPENFUSE_REGISTRY` env var, local dir or HTTP
-- [x] **Name squatting protection** — manifest must be signed by the agent's key, updates require same key
-- [x] **Update checker** — CLI checks registry for newer versions on `status`
-- [ ] **Key revocation** — signed revocation message to invalidate a leaked key
-- [ ] **Key rotation** — publish new key signed by old key, registry accepts the transition
-- [ ] **Cross-bucket messaging** — write to another agent's S3/GCS bucket directly (IAM scoped)
-- [ ] **Dual-mount pattern** — two agents mount same bucket via s3fs/gcsfuse, zero-config messaging
 
 ### v0.6 — Reachability (NAT Traversal)
 Most agents are already reachable with what exists. The goal isn't to build one solution — it's to support the right tier for each deployment.

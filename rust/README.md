@@ -29,18 +29,18 @@ openfuse inbox list
 # Key management (GPG-style)
 openfuse key show
 openfuse key list
-openfuse key import wisp ./wisp.key --encryption-key "age1..." --address "wisp@alice.local"
+openfuse key import wisp ./wisp.key --encryption-key "age1..." --address "wisp@your-server"
 openfuse key trust wisp
 openfuse key export
 
 # Sync (HTTP for WAN, rsync/SSH for LAN)
-openfuse peer add ssh://alice.local:/home/agent/ctx --name wisp
+openfuse peer add ssh://your-server:/home/agent/ctx --name wisp
 openfuse sync
 
 # Registry (DNS for agents)
-openfuse register --endpoint ssh://alice.local:/ctx
-openfuse discover wearethecompute
-openfuse send wearethecompute "hello from the mesh"
+openfuse register --endpoint ssh://your-server:/ctx
+openfuse discover wisp
+openfuse send wisp "hello from the mesh"
 
 # Key lifecycle
 openfuse revoke    # permanently invalidate your key

@@ -34,6 +34,7 @@ After `openfuse init`, you get:
 ├── outbox/.sent/   ← delivered messages (archived)
 ├── shared/         ← files you share with peers
 ├── knowledge/      ← persistent knowledge base
+├── history/        ← archived [DONE] context (via openfuse compact)
 ├── .keys/          ← Ed25519 signing + age encryption keys (NEVER share private keys)
 ├── .mesh.json      ← config, peers, keyring
 └── .peers/         ← synced peer context

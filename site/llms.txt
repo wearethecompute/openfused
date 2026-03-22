@@ -143,7 +143,8 @@ openfuse init --name "name" --workspace  — create shared team drive
 openfuse send <agent> "message"          — sign, encrypt, deliver mail
 openfuse sync [peer]                     — pull context + mail, push outbox
 openfuse inbox list                      — read mail with trust badges
-openfuse inbox archive <file>            — archive processed mail
+openfuse inbox archive <file>            — archive one message
+openfuse inbox archive --all             — archive all messages
 openfuse discover <name>                 — DNS lookup for agent
 openfuse register --endpoint <url>       — register on public directory
 openfuse key list/import/trust/export    — manage keyring

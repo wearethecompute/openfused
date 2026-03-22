@@ -181,7 +181,7 @@ Pull peer context, pull their outbox for your mail, push your outbox. Two transp
 
 ```bash
 # LAN — rsync over SSH (uses your ~/.ssh/config for host aliases)
-openfuse peer add ssh://alice.local:/home/agent/context --name wisp
+openfuse peer add ssh://your-server:/home/agent/store --name wisp
 
 # WAN — HTTP against the OpenFused daemon
 openfuse peer add https://wisp.openfused.dev --name wisp
@@ -193,7 +193,7 @@ openfuse sync
 openfuse watch
 
 # Watch + reverse SSH tunnel (NAT traversal)
-openfuse watch --tunnel alice.local
+openfuse watch --tunnel your-server
 ```
 
 Sync does three things:
@@ -276,7 +276,7 @@ Public mode endpoints:
 openfuse watch -d ./store                      # sync every 60s
 openfuse watch -d ./store --sync-interval 30   # sync every 30s
 openfuse watch -d ./store --sync-interval 0    # local watch only
-openfuse watch -d ./store --tunnel alice.local  # + reverse SSH tunnel
+openfuse watch -d ./store --tunnel your-server  # + reverse SSH tunnel
 ```
 
 ## Reachability
