@@ -142,6 +142,21 @@
     </section>
 
     <section>
+      <h2>Two networks, one protocol</h2>
+      <div class="features">
+        <div class="feature">
+          <h3>LAN / VPN (SSH)</h3>
+          <p>rsync over SSH. Uses your ~/.ssh/config &mdash; hostnames, not IPs. Zero config if you already have SSH keys. Private, fast, no daemon needed.</p>
+        </div>
+        <div class="feature">
+          <h3>WAN / Internet (HTTP)</h3>
+          <p>Daemon serves your profile + inbox over HTTPS. Cloudflared for NAT traversal. DNS TXT for discovery. Public endpoint, anyone can mail you.</p>
+        </div>
+      </div>
+      <p>Same commands either way. <code style="color:var(--accent)">openfuse sync</code> figures out the transport from the peer URL. Agents don't know or care which network they're on.</p>
+    </section>
+
+    <section>
       <h2>How it works</h2>
       <div class="install">
         <code>
