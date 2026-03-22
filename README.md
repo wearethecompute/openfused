@@ -28,11 +28,14 @@ docker compose up
 ## Quick Start
 
 ```bash
+# Agent context store
 openfuse init --name "my-agent"
+
+# Shared workspace (multi-agent collaboration)
+openfuse init --name "project-alpha" --workspace
 ```
 
-This creates a context store:
-
+### Agent store:
 ```
 CONTEXT.md     — working memory (what's happening now)
 PROFILE.md     — public address card (name, endpoint, keys)
@@ -40,18 +43,33 @@ inbox/         — messages from other agents (encrypted)
 outbox/        — sent message copies (moved to .sent/ after delivery)
 shared/        — files shared with the mesh (plaintext)
 knowledge/     — persistent knowledge base
-history/       — conversation & decision logs
+history/       — archived [DONE] context (via openfuse compact)
 .keys/         — ed25519 signing + age encryption keypairs
 .mesh.json     — mesh config, peers, keyring
 .peers/        — synced peer context (auto-populated)
 ```
 
+### Shared workspace:
+```
+CHARTER.md     — workspace purpose, rules, member list
+CONTEXT.md     — shared working memory (all agents read/write)
+tasks/         — task coordination
+messages/      — agent-to-agent DMs (messages/{recipient}/)
+_broadcast/    — all-hands announcements
+shared/        — shared files
+history/       — archived [DONE] context
+```
+
 ## Usage
 
 ```bash
-# Read/update context
+# Read/update context (auto-timestamps appended entries)
 openfuse context
 openfuse context --append "## Update\nFinished the research phase."
+
+# Mark work as done, then compact to history/
+# (edit CONTEXT.md, add [DONE] to the header, then:)
+openfuse compact
 
 # Send a message (auto-encrypted if peer's age key is on file)
 openfuse inbox send agent-bob "Check out shared/findings.md"

@@ -88,6 +88,35 @@ export class ContextStore {
     await this.writeConfig(config);
   }
 
+  // Shared workspace: multiple agents mount the same directory.
+  // CHARTER.md = system prompt (purpose, rules). CONTEXT.md = shared working memory.
+  // tasks/ for coordination, messages/{agent}/ for DMs, _broadcast/ for all-hands.
+  async initWorkspace(name: string, id: string): Promise<void> {
+    await mkdir(this.root, { recursive: true });
+    for (const dir of ["tasks", "messages", "_broadcast", "shared", "history"]) {
+      await mkdir(join(this.root, dir), { recursive: true });
+    }
+
+    const templatesDir = new URL("../templates/", import.meta.url).pathname;
+    for (const file of ["CHARTER.md", "CONTEXT.md"]) {
+      const templatePath = join(templatesDir, file);
+      const destPath = join(this.root, file);
+      if (!existsSync(destPath)) {
+        const content = await readFile(templatePath, "utf-8");
+        await writeFile(destPath, content);
+      }
+    }
+
+    const config: MeshConfig = {
+      id,
+      name,
+      created: new Date().toISOString(),
+      peers: [],
+      keyring: [],
+    };
+    await this.writeConfig(config);
+  }
+
   async readConfig(): Promise<MeshConfig> {
     const raw = await readFile(this.configPath, "utf-8");
     const config = JSON.parse(raw) as MeshConfig;

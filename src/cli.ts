@@ -22,9 +22,10 @@ program
 // --- init ---
 program
   .command("init")
-  .description("Initialize a new context store")
+  .description("Initialize a new context store or shared workspace")
   .option("-n, --name <name>", "Agent name", "agent")
   .option("-d, --dir <path>", "Directory to init", ".")
+  .option("--workspace", "Initialize as a shared workspace (CHARTER.md + tasks/ + messages/ + _broadcast/)")
   .action(async (opts) => {
     const store = new ContextStore(resolve(opts.dir));
     if (await store.exists()) {
@@ -32,14 +33,26 @@ program
       process.exit(1);
     }
     const id = nanoid(12);
-    await store.init(opts.name, id);
-    const config = await store.readConfig();
-    console.log(`Initialized context store: ${store.root}`);
-    console.log(`  Agent ID: ${id}`);
-    console.log(`  Name: ${opts.name}`);
-    console.log(`  Signing key: ${config.publicKey}`);
-    console.log(`  Encryption key: ${config.encryptionKey}`);
-    console.log(`  Fingerprint: ${fingerprint(config.publicKey!)}`);
+    if (opts.workspace) {
+      await store.initWorkspace(opts.name, id);
+      console.log(`Initialized shared workspace: ${store.root}`);
+      console.log(`  Workspace: ${opts.name} (${id})`);
+      console.log(`\nStructure:`);
+      console.log(`  CHARTER.md   — workspace rules and purpose`);
+      console.log(`  CONTEXT.md   — shared working memory`);
+      console.log(`  tasks/       — task coordination`);
+      console.log(`  messages/    — agent-to-agent DMs`);
+      console.log(`  _broadcast/  — all-hands messages`);
+    } else {
+      await store.init(opts.name, id);
+      const config = await store.readConfig();
+      console.log(`Initialized context store: ${store.root}`);
+      console.log(`  Agent ID: ${id}`);
+      console.log(`  Name: ${opts.name}`);
+      console.log(`  Signing key: ${config.publicKey}`);
+      console.log(`  Encryption key: ${config.encryptionKey}`);
+      console.log(`  Fingerprint: ${fingerprint(config.publicKey!)}`);
+    }
   });
 
 // --- status ---
@@ -125,6 +138,24 @@ inbox
       console.log(`\n--- ${badge}${enc} From: ${msg.from} | ${msg.time} ---`);
       console.log(opts.raw ? msg.content : msg.wrappedContent);
     }
+  });
+
+inbox
+  .command("archive")
+  .description("Move all inbox messages to inbox/.read/")
+  .option("-d, --dir <path>", "Context store directory", ".")
+  .action(async (opts) => {
+    const store = new ContextStore(resolve(opts.dir));
+    const { readdir, mkdir, rename } = await import("node:fs/promises");
+    const { join } = await import("node:path");
+    const inboxDir = join(store.root, "inbox");
+    const readDir = join(inboxDir, ".read");
+    await mkdir(readDir, { recursive: true });
+    const files = (await readdir(inboxDir)).filter(f => f.endsWith(".json") || f.endsWith(".md"));
+    for (const f of files) {
+      await rename(join(inboxDir, f), join(readDir, f));
+    }
+    console.log(`Archived ${files.length} messages to inbox/.read/`);
   });
 
 inbox
