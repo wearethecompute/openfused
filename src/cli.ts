@@ -141,21 +141,24 @@ inbox
   });
 
 inbox
-  .command("archive")
-  .description("Move all inbox messages to inbox/.read/")
+  .command("archive <file>")
+  .description("Archive a specific inbox message to inbox/.read/")
   .option("-d, --dir <path>", "Context store directory", ".")
-  .action(async (opts) => {
+  .action(async (file, opts) => {
     const store = new ContextStore(resolve(opts.dir));
-    const { readdir, mkdir, rename } = await import("node:fs/promises");
-    const { join } = await import("node:path");
+    const { mkdir, rename } = await import("node:fs/promises");
+    const { join, basename } = await import("node:path");
+    const safe = basename(file);
     const inboxDir = join(store.root, "inbox");
     const readDir = join(inboxDir, ".read");
     await mkdir(readDir, { recursive: true });
-    const files = (await readdir(inboxDir)).filter(f => f.endsWith(".json") || f.endsWith(".md"));
-    for (const f of files) {
-      await rename(join(inboxDir, f), join(readDir, f));
+    try {
+      await rename(join(inboxDir, safe), join(readDir, safe));
+      console.log(`Archived: ${safe}`);
+    } catch {
+      console.error(`Not found in inbox: ${safe}`);
+      process.exit(1);
     }
-    console.log(`Archived ${files.length} messages to inbox/.read/`);
   });
 
 inbox
