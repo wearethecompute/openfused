@@ -46,7 +46,7 @@ shared/        — files shared with peers (plaintext)
 knowledge/     — persistent knowledge base
 history/       — archived [DONE] context (via openfuse compact)
 .keys/         — ed25519 signing + age encryption keypairs
-.mesh.json     — mesh config, peers, keyring
+.mesh.json     — config, peers, keyring
 .peers/        — synced peer context (auto-populated)
 ```
 
@@ -86,7 +86,7 @@ openfuse inbox list
 # Watch for incoming messages in real-time
 openfuse watch
 
-# Share a file with the mesh
+# Share a file with peers
 openfuse share ./report.pdf
 
 # Sync with all peers (pull context, push outbox)
