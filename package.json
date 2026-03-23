@@ -1,6 +1,6 @@
 {
   "name": "openfused",
-  "version": "0.3.19",
+  "version": "0.3.20",
   "description": "The file protocol for AI agent context. Encrypted, signed, peer-to-peer.",
   "license": "MIT",
   "type": "module",
