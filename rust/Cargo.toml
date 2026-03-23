@@ -1,6 +1,6 @@
 [package]
 name = "openfuse"
-version = "0.3.18"
+version = "0.3.19"
 edition = "2021"
 description = "The file protocol for AI agent context — sync, encrypt, sign"
 license = "MIT"
