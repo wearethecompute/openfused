@@ -14,7 +14,7 @@ interface Env {
 
 interface RegisterRequest {
   name: string;
-  endpoint: string;
+  endpoint?: string;
   publicKey: string;
   encryptionKey?: string;
   fingerprint: string;
@@ -108,7 +108,7 @@ async function register(env: Env, body: string): Promise<Response> {
     return json({ error: "Invalid JSON" }, 400);
   }
 
-  if (!req.name || !req.endpoint || !req.publicKey || !req.fingerprint || !req.signature || !req.signedAt) {
+  if (!req.name || !req.publicKey || !req.fingerprint || !req.signature || !req.signedAt) {
     return json({ error: "Missing required fields" }, 400);
   }
 
@@ -122,22 +122,22 @@ async function register(env: Env, body: string): Promise<Response> {
   if (!/^[0-9a-fA-F]{4}(:[0-9a-fA-F]{4}){7}$/.test(req.fingerprint)) return json({ error: "fingerprint must be colon-separated hex (e.g. A1B2:C3D4:...)" }, 400);
   // encryptionKey: age public key format
   if (req.encryptionKey && !/^age1[a-z0-9]{58}$/.test(req.encryptionKey)) return json({ error: "encryptionKey must be a valid age public key" }, 400);
-  // endpoint: no spaces allowed (URL is already validated above, but belt-and-suspenders)
-  if (/\s/.test(req.endpoint)) return json({ error: "endpoint contains whitespace" }, 400);
-
   const safeName = req.name.replace(/[^a-zA-Z0-9_-]/g, "");
   if (safeName !== req.name) return json({ error: "Name: a-z, 0-9, -, _ only" }, 400);
   if (safeName.length > 64) return json({ error: "Name too long (max 64)" }, 400);
   if (safeName.length < 2) return json({ error: "Name too short (min 2)" }, 400);
 
-  // Validate endpoint — must be a URL, not arbitrary text/scripts
-  try {
-    const url = new URL(req.endpoint);
-    if (!["http:", "https:"].includes(url.protocol)) {
-      return json({ error: "Public registry requires http:// or https:// endpoint. SSH peers go in your local address book." }, 400);
+  // Validate endpoint if provided — must be a URL, not arbitrary text/scripts
+  if (req.endpoint) {
+    if (/\s/.test(req.endpoint)) return json({ error: "endpoint contains whitespace" }, 400);
+    try {
+      const url = new URL(req.endpoint);
+      if (!["http:", "https:"].includes(url.protocol)) {
+        return json({ error: "Public registry requires http:// or https:// endpoint. SSH peers go in your local address book." }, 400);
+      }
+    } catch {
+      return json({ error: "Invalid endpoint URL" }, 400);
     }
-  } catch {
-    return json({ error: "Invalid endpoint URL" }, 400);
   }
 
   // Reject stale signatures — prevents replay of captured registration requests
@@ -147,7 +147,7 @@ async function register(env: Env, body: string): Promise<Response> {
   }
 
   // Verify Ed25519 signature
-  const canonical = `${req.name}|${req.endpoint}|${req.publicKey}|${req.encryptionKey || ""}`;
+  const canonical = `${req.name}|${req.endpoint || ""}|${req.publicKey}|${req.encryptionKey || ""}`;
   const payload = `${req.name}\n${req.signedAt}\n${canonical}`;
   const valid = await verifyEd25519(payload, req.signature, req.publicKey);
   if (!valid) {
@@ -163,33 +163,33 @@ async function register(env: Env, body: string): Promise<Response> {
     }
   }
 
-  // Verify endpoint is live — HEAD /profile must return 200.
+  // Verify endpoint is live (if provided) — HEAD /profile must return 200.
   // Block private/loopback IPs to prevent SSRF against internal services.
-  try {
-    const endpointUrl = new URL(req.endpoint);
-    const hostname = endpointUrl.hostname.replace(/^\[|\]$/g, "");
-    // Block private/reserved IPs including IPv6 ULA, link-local, IPv4-mapped, decimal encoding
-    if (/^(127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|0\.|169\.254\.|localhost$|::1$|0\.0\.0\.0$)/.test(hostname)
-      || /^(fc|fd|fe80)/i.test(hostname)
-      || /^::ffff:(127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(hostname)
-      || /^\d+$/.test(hostname)) {  // decimal IP encoding (e.g., 2130706433 = 127.0.0.1)
+  if (req.endpoint) {
+    try {
+      const endpointUrl = new URL(req.endpoint);
+      const hostname = endpointUrl.hostname.replace(/^\[|\]$/g, "");
+      if (/^(127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|0\.|169\.254\.|localhost$|::1$|0\.0\.0\.0$)/.test(hostname)
+        || /^(fc|fd|fe80)/i.test(hostname)
+        || /^::ffff:(127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(hostname)
+        || /^\d+$/.test(hostname)) {
+        return json({ error: "Endpoint verification failed" }, 422);
+      }
+      const probe = await fetch(`${req.endpoint.replace(/\/$/, "")}/profile`, {
+        method: "HEAD",
+        signal: AbortSignal.timeout(5000),
+        redirect: "error",
+      });
+      if (!probe.ok) {
+        return json({ error: "Endpoint verification failed" }, 422);
+      }
+    } catch {
       return json({ error: "Endpoint verification failed" }, 422);
     }
-    // Follow redirects disabled — prevents redirect-based SSRF bypass
-    const probe = await fetch(`${req.endpoint.replace(/\/$/, "")}/profile`, {
-      method: "HEAD",
-      signal: AbortSignal.timeout(5000),
-      redirect: "error",
-    });
-    if (!probe.ok) {
-      return json({ error: "Endpoint verification failed" }, 422);
-    }
-  } catch {
-    return json({ error: "Endpoint verification failed" }, 422);
   }
 
   // Create DNS TXT record
-  const txtContent = `v=of1 e=${req.endpoint} pk=${req.publicKey} ek=${req.encryptionKey || ""} fp=${req.fingerprint}`;
+  const txtContent = `v=of1 e=${req.endpoint || ""} pk=${req.publicKey} ek=${req.encryptionKey || ""} fp=${req.fingerprint}`;
   await upsertDnsTxt(env, safeName, txtContent);
 
   return json({

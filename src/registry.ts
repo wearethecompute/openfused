@@ -113,11 +113,11 @@ async function discoverViaDns(dnsName: string, agentName: string): Promise<Manif
       if (k && v) fields[k] = v;
     }
 
-    if (!fields.e || !fields.pk) return null;
+    if (!fields.pk) return null;
 
     return {
       name: agentName,
-      endpoint: fields.e,
+      endpoint: fields.e || "",
       publicKey: fields.pk,
       encryptionKey: fields.ek || undefined,
       fingerprint: fields.fp || "",

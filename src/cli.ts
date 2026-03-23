@@ -621,16 +621,17 @@ program
   .description("Register this agent in the public registry")
   .option("-d, --dir <path>", "Context store directory", ".")
   .option("-n, --name <name>", "Full agent name (defaults to {storename}.openfused.net, or set your own domain)")
-  .requiredOption("-e, --endpoint <url>", "Endpoint URL where peers can reach you")
+  .option("-e, --endpoint <url>", "Endpoint URL where peers can reach you (optional — keys-only registration without endpoint)")
   .option("-r, --registry <url>", "Registry URL")
   .action(async (opts) => {
     const store = new ContextStore(resolve(opts.dir));
     const reg = registry.resolveRegistry(opts.registry);
     const config = await store.readConfig();
     const agentName = opts.name || `${config.name}.openfused.net`;
-    const manifest = await registry.register(store, opts.endpoint, reg, agentName);
+    const manifest = await registry.register(store, opts.endpoint || "", reg, agentName);
     console.log(`Registered: ${manifest.name} [SIGNED]`);
-    console.log(`  Endpoint:    ${manifest.endpoint}`);
+    if (manifest.endpoint) console.log(`  Endpoint:    ${manifest.endpoint}`);
+    else console.log(`  Endpoint:    (none — keys-only registration)`);
     console.log(`  Fingerprint: ${manifest.fingerprint}`);
     console.log(`  DNS:         _openfuse.${manifest.name}`);
     console.log(`  Registry:    ${reg}`);
@@ -731,8 +732,10 @@ program
         } catch {
           console.log(`Queued for ${name}. Will deliver on next sync.`);
         }
-      } else {
+      } else if (manifest.endpoint) {
         console.log(`Queued for ${name}. Run \`openfuse sync\` to deliver.`);
+      } else {
+        console.log(`Queued for ${name}. Key imported but ${name} has no endpoint — they'll need to pull from your outbox, or add a peer URL with \`openfuse peer add\`.`);
       }
     } catch {
       // Not in registry — send as a peer message
