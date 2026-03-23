@@ -235,6 +235,8 @@ async fn ack_outbox(
         .collect::<Vec<_>>()
         .join("/");
     if sanitized_path.is_empty() { return Err(StatusCode::BAD_REQUEST); }
+    // Max depth: subdir/file.json = 2 segments
+    if sanitized_path.split('/').count() > 2 { return Err(StatusCode::BAD_REQUEST); }
 
     // Same auth as GET /outbox — verify requester owns this name
     let pubkey_hex = headers.get("x-openfuse-publickey")
@@ -265,6 +267,24 @@ async fn ack_outbox(
     if !verify_key_ownership(&store, &safe_name, pubkey_hex).await {
         tracing::warn!("ACK rejected: unknown public key for agent '{}'", safe_name);
         return Err(StatusCode::FORBIDDEN);
+    }
+
+    // Verify fingerprint if path includes a subdir (e.g., "alice-A1B2C3D4/msg.json")
+    // Prevents agent "alice" with key A from ACKing messages meant for "alice" with key B.
+    if sanitized_path.contains('/') {
+        let subdir = sanitized_path.split('/').next().unwrap_or("");
+        let expected_prefix = format!("{}-", safe_name);
+        if subdir.starts_with(&expected_prefix) {
+            let dir_fp = &subdir[expected_prefix.len()..];
+            let requester_fp = {
+                let hash = Sha256::digest(pubkey_hex.as_bytes());
+                hex::encode(&hash[..4]).to_uppercase()
+            };
+            if !dir_fp.eq_ignore_ascii_case(&requester_fp) {
+                tracing::warn!("ACK fingerprint mismatch: dir={}, requester={}", dir_fp, requester_fp);
+                return Err(StatusCode::FORBIDDEN);
+            }
+        }
     }
 
     // Move to .sent/ (within the subdir if applicable)

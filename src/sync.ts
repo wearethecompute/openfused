@@ -5,7 +5,7 @@
 // thing: pull CONTEXT.md + PROFILE.md + shared/ + knowledge/, push outbox → peer inbox.
 
 import { readFile, writeFile, mkdir, readdir, rename } from "node:fs/promises";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { existsSync } from "node:fs";
 import { execFile as execFileCb } from "node:child_process";
 import { promisify } from "node:util";
@@ -67,13 +67,18 @@ interface Transport {
 
 // Archive instead of delete: preserves audit trail and lets agents review what was sent.
 // Without this, sync would re-deliver the same message every cycle.
-// filePath can be "file.json" (flat, legacy) or "recipientDir/file.json" (new subdir layout).
+// relPath can be "file.json" (flat, legacy) or "recipientDir/file.json" (new subdir layout).
 async function archiveSent(outboxRoot: string, relPath: string): Promise<void> {
-  const dir = join(outboxRoot, relPath, "..");
+  // Path traversal defense: resolve and verify we stay under outboxRoot
+  const fullPath = resolve(outboxRoot, relPath);
+  if (!fullPath.startsWith(resolve(outboxRoot) + "/")) {
+    throw new Error(`Path traversal blocked: ${relPath}`);
+  }
+  const dir = join(fullPath, "..");
   const fname = relPath.includes("/") ? relPath.split("/").pop()! : relPath;
   const sentDir = join(dir, ".sent");
   await mkdir(sentDir, { recursive: true });
-  await rename(join(outboxRoot, relPath), join(sentDir, fname));
+  await rename(fullPath, join(sentDir, fname));
 }
 
 function parseUrl(url: string): Transport {
@@ -390,21 +395,42 @@ async function syncSsh(
   const inboxDir = join(store.root, "inbox");
   await mkdir(inboxDir, { recursive: true });
 
-  // New subdir format: pull from outbox/{myName}-*/*.json
+  // New subdir format: pull outbox/{myName}-*/*.json into a temp dir (preserves structure),
+  // then move the .json files into inbox/ (flattened). rsync --include handles the filtering;
+  // we avoid ssh commands to prevent shell injection via host/path values.
+  const tmpPull = join(store.root, ".tmp-outbox-pull");
   try {
+    await mkdir(tmpPull, { recursive: true });
     await execFile("rsync", [
       "-az", "--ignore-existing",
-      "--include", `${myName}-*/`,            // include our subdirs
-      "--include", `${myName}-*/*.json`,      // include json files inside
+      "--include", `${myName}-*/`,
+      "--include", `${myName}-*/*.json`,
       "--exclude", "*",
       `${host}:${remotePath}/outbox/`,
-      `${inboxDir}/`,                         // flatten into inbox
+      `${tmpPull}/`,
     ]);
+    // Flatten: move .json files from subdirs into inbox/
+    if (existsSync(tmpPull)) {
+      for (const subEntry of await readdir(tmpPull, { withFileTypes: true })) {
+        if (!subEntry.isDirectory() || !subEntry.name.startsWith(`${myName}-`)) continue;
+        const subPath = join(tmpPull, subEntry.name);
+        for (const fname of await readdir(subPath)) {
+          if (!fname.endsWith(".json")) continue;
+          const dest = join(inboxDir, fname);
+          if (!existsSync(dest)) {
+            await rename(join(subPath, fname), dest);
+          }
+        }
+      }
+    }
     pulled.push("outbox→inbox");
   } catch (e: any) {
     if (!String(e.stderr || e.message).includes("No such file")) {
       errors.push(`pull outbox (subdir): ${e.stderr || e.message}`);
     }
+  } finally {
+    // Clean up temp dir
+    try { await (await import("node:fs/promises")).rm(tmpPull, { recursive: true, force: true }); } catch {}
   }
 
   // Legacy flat format: outbox/*_to-{name}*.json
