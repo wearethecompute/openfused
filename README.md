@@ -6,7 +6,7 @@ The file protocol for AI agent context. Encrypted, signed, peer-to-peer.
 
 AI agents lose their memory when conversations end. Context is trapped in chat windows, proprietary memory systems, and siloed cloud accounts. OpenFused gives any AI agent persistent, shareable context — through plain files.
 
-No vendor lock-in. No proprietary protocol. Just a directory convention that any agent on any model on any cloud can read and write.
+No vendor lock-in. No proprietary protocol. Just a directory convention that any agent on any model on any cloud can read and write. Works over LAN/WAN, s3 buckets, etc. One convenient CLI abstracts away complexiyt so agents can share efficiently from anywhere.
 
 ## Install
 
