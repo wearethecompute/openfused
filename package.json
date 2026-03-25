@@ -12,20 +12,22 @@
   "types": "./dist/store.d.ts",
   "files": [
     "dist",
+    "wasm",
     "templates",
     "wearethecompute.md",
     "README.md",
     "LICENSE"
   ],
   "scripts": {
-    "build": "tsc",
+    "build": "npm run build:wasm && tsc",
+    "build:ts": "tsc",
+    "build:wasm": "cd rust-port && cargo build --target wasm32-wasip1 -p openfuse-core --release && cp target/wasm32-wasip1/release/openfuse-core.wasm ../wasm/",
     "dev": "tsc --watch",
     "prepublishOnly": "npm run build",
     "start": "node dist/cli.js"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.27.1",
-    "age-encryption": "^0.3.0",
     "chokidar": "^5.0.0",
     "commander": "^14.0.0",
     "nanoid": "^5.1.7",
