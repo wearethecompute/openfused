@@ -22,3 +22,4 @@ hosted/
 demo/
 rust-port/target/
 wasm/*.wasm
+wearethecompute.md

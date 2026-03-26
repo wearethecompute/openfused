@@ -5,7 +5,7 @@ services:
       dockerfile: demo/Dockerfile
     container_name: openfuse-demo
     ports:
-      - "2054:2053"
+      - "2053:2053"
     environment:
       - AGENT_NAME=demo-bot
     volumes:
