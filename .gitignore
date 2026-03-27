@@ -18,8 +18,23 @@ store/*
 !store/.gitkeep
 drafts/hn-post.md
 drafts/hosted-mailbox-plan.md
+drafts/
 hosted/
 demo/
 rust-port/target/
 wasm/*.wasm
 wearethecompute.md
+.wrangler/
+
+# Sandbox/editor environment files (Codex, IDE, etc.)
+.bash_profile
+.bashrc
+.zshrc
+.zprofile
+.profile
+.gitconfig
+.gitmodules
+.ripgreprc
+.mcp.json
+.idea/
+.vscode/

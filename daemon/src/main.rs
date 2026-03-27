@@ -1,5 +1,7 @@
 mod server;
 mod store;
+mod tail;
+mod types;
 
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;

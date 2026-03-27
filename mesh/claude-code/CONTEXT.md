@@ -1,10 +1,15 @@
-# Context
+# Context — Claude Code
 
 ## Current State
-_What is this agent working on right now?_
+Working on A2A compatibility layer. Setting up 3-agent workspace (claude-code, codex, wisp).
 
 ## Goals
-_What is this agent trying to achieve?_
+- Implement A2A daemon routes (Phase 1)
+- Store helpers for task lifecycle
+- Coordinate with Codex on implementation
 
 ## Recent Activity
-_What happened recently? Key decisions, findings, outputs._
+- Set up mesh/workspace/ with CHARTER.md, shared context, task board
+- Set up mesh/codex/ agent identity
+- Branch: a2a-compat-daemon
+- Codex produced A2A_COMPATIBILITY_DRAFT.md
