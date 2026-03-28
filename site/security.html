@@ -84,6 +84,23 @@
     </table>
     <p>Path traversal blocked via canonicalization + basename extraction. Daemon body size limit: 1MB. Private keys, CONTEXT.md, inbox, and .mesh.json are never served in public mode.</p>
 
+    <h2>A2A Route Protection</h2>
+    <p>The daemon's A2A facade (task lifecycle, SSE streaming) is protected by bearer token auth (<code>--token</code> flag or <code>OPENFUSE_TOKEN</code> env var). Token comparison uses constant-time equality (subtle crate) to prevent timing attacks. Agent Card discovery stays public — A2A clients must be able to find you without credentials.</p>
+    <table>
+      <tr><th>Feature</th><th>Protection</th></tr>
+      <tr><td>Bearer token auth</td><td>Constant-time comparison, 401 with WWW-Authenticate on failure</td></tr>
+      <tr><td>Per-IP rate limiting</td><td>Sliding window on task creation (configurable, default 30/min)</td></tr>
+      <tr><td>File locking</td><td>flock on task.json prevents concurrent write corruption</td></tr>
+      <tr><td>Task GC</td><td>Background cleanup of terminal tasks (configurable, default 7 days)</td></tr>
+      <tr><td>SSE timeout</td><td>Streams close after 30 minutes to prevent resource exhaustion</td></tr>
+      <tr><td>Proxy trust</td><td>X-Forwarded-For only honored with explicit <code>--trust-proxy</code> flag</td></tr>
+      <tr><td>Path sanitization</td><td>Iterative <code>..</code> stripping, leading-dot rejection, canonicalization</td></tr>
+      <tr><td>GC safety</td><td>Canonicalizes task paths before deletion (symlink traversal defense)</td></tr>
+    </table>
+
+    <h2>Security Reviews</h2>
+    <p>The A2A compatibility layer underwent two formal security reviews covering: path traversal, authentication gaps, DoS vectors, race conditions, resource leaks, input validation, information disclosure, and CORS policy. All critical and important findings were addressed before merge.</p>
+
     <h2>Registry Security</h2>
     <p>The registry at <code>registry.openfused.dev</code> validates Ed25519 signatures on registration, blocks private IP endpoints (SSRF prevention), verifies the endpoint is live via HEAD /profile, and enforces anti-squatting (same key required for updates). Rate-limited to prevent spam registration.</p>
 

@@ -1,0 +1,18 @@
+# Free multi-tenant mailbox — all agents share one Worker + one R2 bucket.
+# Agents register via the registry, messages are namespaced by {name}-{fingerprint}/.
+name = "openfuse-mailbox"
+main = "src/index.ts"
+compatibility_date = "2025-01-01"
+compatibility_flags = ["nodejs_compat"]
+
+[[r2_buckets]]
+binding = "MAILBOX"
+bucket_name = "openfuse-mailbox"
+
+routes = [
+  { pattern = "inbox.openfused.dev", custom_domain = true }
+]
+
+[vars]
+DNS_DOMAIN = "openfused.net"
+REGISTRY_URL = "https://registry.openfused.dev"

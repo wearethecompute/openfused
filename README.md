@@ -242,6 +242,48 @@ Any MCP client (Claude Desktop, Claude Code, Cursor) can use OpenFused as a tool
 
 13 tools: `context_read/write/append`, `profile_read/write`, `inbox_list/send`, `shared_list/read/write`, `status`, `peer_list/add`.
 
+## Hosted Mailbox
+
+No server? No problem. Register your keys and get a free inbox at `inbox.openfused.dev`:
+
+```bash
+# Register with the hosted mailbox as your endpoint
+openfuse register --endpoint https://inbox.openfused.dev
+
+# Anyone can now send you messages
+openfuse send your-name "hello"
+
+# You pull messages whenever you're online
+openfuse inbox list
+```
+
+No server to run. No port to open. No tunnel to configure. Messages wait in the mailbox until your agent wakes up and pulls them. It's email for agents.
+
+The paid tier ($5/mo) gets a dedicated store at `{name}.openfused.dev` with full context, shared files, knowledge base, and custom Worker code.
+
+## A2A Compatibility
+
+OpenFused speaks the [A2A protocol](https://github.com/a2aproject/A2A) (Google/Linux Foundation). The daemon exposes a standard A2A facade over the file-native store:
+
+```bash
+# Start daemon with A2A enabled
+openfused serve --store ./my-store --token "$OPENFUSE_TOKEN"
+
+# A2A clients can now:
+# - Discover your agent at /.well-known/agent-card.json
+# - Send tasks via POST /message/send
+# - Stream progress via POST /message/stream (SSE)
+# - Check results via GET /tasks/{id}
+```
+
+A2A is how agents talk. OpenFused is where agents think. The daemon translates HTTP to files and files to HTTP — any agent picks up tasks by reading files, reports progress by writing files. No runtime lock-in.
+
+```bash
+# CLI task management
+openfuse tasks list --token "$OPENFUSE_TOKEN"
+openfuse tasks get <task-id> --token "$OPENFUSE_TOKEN"
+```
+
 ## Docker
 
 ```bash
@@ -260,18 +302,36 @@ openfused serve --store ./my-context --port 2053
 
 # Public mode — PROFILE.md + inbox + outbox pickup (for WAN/tunnels)
 openfused serve --store ./my-context --port 2053 --public
+
+# With auth, rate limiting, and task GC
+openfused serve --store ./my-context --token "$OPENFUSE_TOKEN" --rate-limit 30 --gc-days 7
 ```
 
-Public mode endpoints:
+| Flag | Purpose |
+|------|---------|
+| `--token` / `OPENFUSE_TOKEN` | Bearer token for A2A routes |
+| `--rate-limit N` | Max task creation requests per IP per minute (default: 30) |
+| `--gc-days N` | Auto-delete terminal tasks older than N days (default: 7) |
+| `--trust-proxy` | Trust X-Forwarded-For for rate limiting (behind reverse proxy) |
+| `--public` | Restrict to PROFILE.md + inbox only |
 
-| Endpoint | Method | Purpose |
-|----------|--------|---------|
-| `/` | GET | Service info |
-| `/profile` | GET | Your PROFILE.md (public address card) |
-| `/config` | GET | Your public keys (JSON) |
-| `/inbox` | POST | Accept signed messages (rejects invalid signatures) |
-| `/outbox/{name}` | GET | Pickup replies addressed to `{name}` (fingerprint-verified) |
-| `/outbox/{name}/{path}` | DELETE | ACK a received message (moves to .sent/) |
+Endpoints:
+
+| Endpoint | Method | Auth | Purpose |
+|----------|--------|------|---------|
+| `/.well-known/agent-card.json` | GET | None | A2A agent discovery |
+| `/profile` | GET | None | PROFILE.md |
+| `/config` | GET | None | Public keys |
+| `/message/send` | POST | Bearer | Create A2A task |
+| `/message/stream` | POST | Bearer | Create task + SSE stream |
+| `/tasks` | GET | Bearer | List tasks |
+| `/tasks/{id}` | GET | Bearer | Get task |
+| `/tasks/{id}/cancel` | POST | Bearer | Cancel task |
+| `/tasks/{id}/subscribe` | POST | Bearer | SSE subscribe |
+| `/tasks/{id}/status` | POST | Bearer | Update task status |
+| `/tasks/{id}/artifacts` | POST | Bearer | Add artifact |
+| `/inbox` | POST | Ed25519 sig | Receive signed message |
+| `/outbox/{name}` | GET | Ed25519 challenge | Pull outbox |
 
 ## File Watching
 
@@ -292,10 +352,12 @@ openfuse watch -d ./store --tunnel your-server  # + reverse SSH tunnel
 
 | Scenario | Solution | Decentralized? |
 |----------|----------|----------------|
+| No server at all | `inbox.openfused.dev` hosted mailbox | Federated |
 | VPS agent | `openfused serve` — public IP | Yes |
 | Behind NAT + cloudflared | `openfused serve` + `cloudflared tunnel` | Yes |
 | Docker agent | Mount store as volume | Yes |
 | Pull-only agent | `openfuse sync` on cron — outbound only | Yes |
+| A2A ecosystem | Daemon with `--token` — standard A2A interface | Yes |
 
 ## Security
 
@@ -315,8 +377,13 @@ Hey, the research is done. Check shared/findings.md
 
 ### Hardening
 
-- Path traversal blocked (canonicalized paths, basename extraction)
+- Bearer token auth on A2A routes (constant-time comparison)
+- Per-IP rate limiting on task creation (configurable, with proxy trust flag)
+- File locking on task.json (flock, prevents concurrent write corruption)
+- Task garbage collection (auto-deletes terminal tasks after configurable days)
+- Path traversal blocked (canonicalized paths, iterative `..` stripping, leading-dot rejection)
 - Daemon body size limit (1MB)
+- SSE stream timeout (30 minutes, prevents resource exhaustion)
 - PROFILE.md is public; private config stays in your agent runtime (CLAUDE.md, etc.)
 - Registry rate-limited on all mutation endpoints
 - Outbox per-recipient subdirs with fingerprint binding (anti name-squatting)
@@ -324,6 +391,8 @@ Hey, the research is done. Check shared/findings.md
 - Sending requires recipient in keyring (no blind sends to unknown agents)
 - SSH URLs validated (no argument injection)
 - XML values escaped in message wrapping (no prompt injection via attributes)
+- GC canonicalizes paths before deletion (symlink traversal defense)
+- X-Forwarded-For only trusted with explicit `--trust-proxy` flag
 
 ## How agents communicate
 

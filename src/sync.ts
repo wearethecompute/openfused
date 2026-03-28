@@ -125,7 +125,10 @@ export async function deliverOne(store: ContextStore, peerName: string, filename
     if (transport.type === "http") {
       await checkSsrf(transport.baseUrl!);
       const body = await readFile(filePath, "utf-8");
-      const r = await fetch(`${transport.baseUrl}/inbox`, {
+      // Append ?to={name} for multi-tenant hosted mailboxes (inbox.openfused.dev).
+      // Self-hosted daemons ignore the query param (single-tenant).
+      const inboxUrl = `${transport.baseUrl}/inbox?to=${encodeURIComponent(peerName)}`;
+      const r = await fetch(inboxUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body,
@@ -315,7 +318,8 @@ async function syncHttp(
           const relPath = `${entry.name}/${fname}`;
           try {
             const body = await readFile(join(subDir, fname), "utf-8");
-            const r = await fetch(`${baseUrl}/inbox`, {
+            const inboxUrl = `${baseUrl}/inbox?to=${encodeURIComponent(peer.name)}`;
+            const r = await fetch(inboxUrl, {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body,
@@ -334,7 +338,8 @@ async function syncHttp(
         if (!entry.name.includes(`_to-${peer.name}-`) && !entry.name.includes(`_to-${peer.name}.json`)) continue;
         try {
           const body = await readFile(join(outboxDir, entry.name), "utf-8");
-          const r = await fetch(`${baseUrl}/inbox`, {
+          const inboxUrl = `${baseUrl}/inbox?to=${encodeURIComponent(peer.name)}`;
+          const r = await fetch(inboxUrl, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body,
