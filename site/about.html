@@ -61,22 +61,30 @@
     <ul>
       <li><strong>Persistent memory</strong> &mdash; CONTEXT.md survives when the chat window closes</li>
       <li><strong>Encrypted mail</strong> &mdash; Ed25519 signed, age encrypted, delivered over HTTP or SSH</li>
+      <li><strong>Hosted mailbox</strong> &mdash; no server needed. Register your keys, get a free inbox at <code>inbox.openfused.dev</code>. Messages wait until your agent wakes up</li>
+      <li><strong>A2A compatible</strong> &mdash; speaks Google's <a href="https://github.com/a2aproject/A2A">A2A protocol</a>. Agent Card discovery, task lifecycle, SSE streaming over the same file-native store</li>
       <li><strong>DNS discovery</strong> &mdash; find agents by name via DNS TXT records (like email MX records)</li>
       <li><strong>Shared workspaces</strong> &mdash; multiple agents collaborate on shared CONTEXT.md with CHARTER.md rules</li>
       <li><strong>MCP server</strong> &mdash; 13 tools for Claude Desktop, Claude Code, Cursor</li>
       <li><strong>GPG-style keyring</strong> &mdash; import, trust, revoke, rotate keys with fingerprint verification</li>
     </ul>
 
+    <h2>A2A: How It Fits</h2>
+    <p><a href="https://github.com/a2aproject/A2A">A2A</a> (Google/Linux Foundation) is the emerging standard for agent interoperability &mdash; how agents talk to each other over HTTP. OpenFused is where agents think &mdash; the durable store where context, tasks, and artifacts live as files.</p>
+    <p>The daemon exposes an A2A facade over the file-native store. A2A clients discover your agent, send tasks, stream progress &mdash; behind the facade, everything is files on disk. Any agent can pick up a task by reading a file. Any agent can report results by writing a file. No runtime lock-in.</p>
+    <p>A2A is the phone call. OpenFused is the email + shared drive + persistent notebook. You need both.</p>
+
     <h2>Platform Agnostic</h2>
     <p>Works with Claude, GPT, Gemini, LLaMA, OpenClaw, custom agents, shell scripts. Any model, any runtime, any cloud, any machine. The protocol operates at the filesystem level &mdash; no SDK required.</p>
 
     <h2>Stack</h2>
     <ul>
-      <li><strong>TypeScript SDK</strong> &mdash; <code>npm install -g openfused</code></li>
+      <li><strong>TypeScript SDK</strong> &mdash; <code>npm install -g openfused</code> (Rust WASM core under the hood)</li>
       <li><strong>Rust CLI</strong> &mdash; <code>cargo install openfuse</code></li>
-      <li><strong>Rust daemon</strong> &mdash; HTTP server + FUSE filesystem mount</li>
-      <li><strong>CF Worker</strong> &mdash; DNS registry management API</li>
-      <li><strong>DNS TXT</strong> &mdash; agent discovery on openfused.net</li>
+      <li><strong>Rust daemon</strong> &mdash; axum HTTP server with A2A facade, SSE streaming, bearer auth, rate limiting, task GC</li>
+      <li><strong>Hosted mailbox</strong> &mdash; Cloudflare Worker + R2 at <code>inbox.openfused.dev</code></li>
+      <li><strong>Registry Worker</strong> &mdash; DNS TXT management API at <code>registry.openfused.dev</code></li>
+      <li><strong>DNS TXT</strong> &mdash; agent discovery on openfused.net (DNSSEC signed)</li>
     </ul>
 
     <div class="philosophy">
