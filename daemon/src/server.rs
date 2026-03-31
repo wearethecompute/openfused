@@ -321,11 +321,11 @@ async fn get_agent_card(
 // A2A: Message send (create or continue a task)
 // ---------------------------------------------------------------------------
 
-async fn send_message(
-    State(state): State<AppState>,
-    Json(request): Json<SendMessageRequest>,
-) -> Result<(StatusCode, Json<SendMessageResponse>), (StatusCode, Json<ProblemDetail>)> {
-    let store = &state.store;
+/// Shared task creation logic used by both send_message and stream_message.
+async fn create_or_continue_task(
+    store: &Arc<ContextStore>,
+    request: SendMessageRequest,
+) -> Result<(TaskRecord, bool), (StatusCode, Json<ProblemDetail>)> {
     // Validate parts
     if request.message.parts.is_empty() {
         return Err((
@@ -345,12 +345,9 @@ async fn send_message(
     // If task_id is present, this is a follow-up to an existing task.
     if let Some(ref task_id) = request.message.task_id {
         let task = store.append_history(task_id, request.message.clone()).await.map_err(|e| {
-            (
-                StatusCode::NOT_FOUND,
-                Json(ProblemDetail::not_found(e.to_string())),
-            )
+            (StatusCode::NOT_FOUND, Json(ProblemDetail::not_found(e.to_string())))
         })?;
-        return Ok((StatusCode::OK, Json(SendMessageResponse::Task(task))));
+        return Ok((task, false)); // false = not newly created
     }
 
     // New task.
@@ -360,23 +357,17 @@ async fn send_message(
         .message
         .context_id
         .clone()
-        .unwrap_or_else(|| generate_context_id());
+        .unwrap_or_else(generate_context_id);
 
-    // Normalize parts (add kind field if missing).
     let normalized_message = A2AMessage {
-        parts: request
-            .message
-            .parts
-            .into_iter()
-            .map(|p| p.normalized())
-            .collect(),
+        parts: request.message.parts.into_iter().map(|p| p.normalized()).collect(),
         context_id: Some(context_id.clone()),
         task_id: Some(task_id.clone()),
         ..request.message
     };
 
     let task = TaskRecord {
-        id: task_id.clone(),
+        id: task_id,
         context_id: Some(context_id),
         status: TaskStatus {
             state: task_state::SUBMITTED.to_string(),
@@ -386,8 +377,7 @@ async fn send_message(
         artifacts: vec![],
         history: vec![normalized_message],
         metadata: request.metadata.map(|m| {
-            m.into_iter()
-                .collect::<serde_json::Map<String, serde_json::Value>>()
+            m.into_iter().collect::<serde_json::Map<String, serde_json::Value>>()
         }),
         openfuse: Some(OpenfuseTaskMeta {
             created_at: now.clone(),
@@ -395,16 +385,21 @@ async fn send_message(
         }),
     };
 
-    let input =
-        serde_json::to_value(&request.configuration).unwrap_or(serde_json::Value::Null);
+    let input = serde_json::to_value(&request.configuration).unwrap_or(serde_json::Value::Null);
     store.create_task(&task, &input).await.map_err(|e| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ProblemDetail::internal(e.to_string())),
-        )
+        (StatusCode::INTERNAL_SERVER_ERROR, Json(ProblemDetail::internal(e.to_string())))
     })?;
 
-    Ok((StatusCode::CREATED, Json(SendMessageResponse::Task(task))))
+    Ok((task, true)) // true = newly created
+}
+
+async fn send_message(
+    State(state): State<AppState>,
+    Json(request): Json<SendMessageRequest>,
+) -> Result<(StatusCode, Json<SendMessageResponse>), (StatusCode, Json<ProblemDetail>)> {
+    let (task, created) = create_or_continue_task(&state.store, request).await?;
+    let status = if created { StatusCode::CREATED } else { StatusCode::OK };
+    Ok((status, Json(SendMessageResponse::Task(task))))
 }
 
 // ---------------------------------------------------------------------------
@@ -539,71 +534,17 @@ async fn create_artifact_handler(
 // A2A: SSE Streaming
 // ---------------------------------------------------------------------------
 
-/// POST /message:stream — create a task and stream events via SSE.
+/// POST /message/stream — create a task and stream events via SSE.
 async fn stream_message(
     State(state): State<AppState>,
     Json(request): Json<SendMessageRequest>,
 ) -> Result<Sse<impl tokio_stream::Stream<Item = Result<SseEvent, std::convert::Infallible>>>, (StatusCode, Json<ProblemDetail>)>
 {
     let store = &state.store;
-    // Validate
-    if request.message.parts.is_empty() {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            Json(ProblemDetail::bad_request("Message must have at least one part")),
-        ));
-    }
+    let (task, _created) = create_or_continue_task(store, request).await?;
 
-    // Create task (same logic as send_message).
-    let now = chrono::Utc::now().to_rfc3339();
-    let task_id = generate_task_id();
-    let context_id = request
-        .message
-        .context_id
-        .clone()
-        .unwrap_or_else(generate_context_id);
-
-    let normalized_message = A2AMessage {
-        parts: request.message.parts.into_iter().map(|p| p.normalized()).collect(),
-        context_id: Some(context_id.clone()),
-        task_id: Some(task_id.clone()),
-        ..request.message
-    };
-
-    let task = TaskRecord {
-        id: task_id.clone(),
-        context_id: Some(context_id),
-        status: TaskStatus {
-            state: task_state::SUBMITTED.to_string(),
-            message: None,
-            timestamp: Some(now.clone()),
-        },
-        artifacts: vec![],
-        history: vec![normalized_message],
-        metadata: request.metadata.map(|m| {
-            m.into_iter().collect::<serde_json::Map<String, serde_json::Value>>()
-        }),
-        openfuse: Some(OpenfuseTaskMeta {
-            created_at: now.clone(),
-            updated_at: now,
-        }),
-    };
-
-    let input = serde_json::to_value(&request.configuration).unwrap_or(serde_json::Value::Null);
-    store.create_task(&task, &input).await.map_err(|e| {
-        (StatusCode::INTERNAL_SERVER_ERROR, Json(ProblemDetail::internal(e.to_string())))
-    })?;
-
-    // Set up SSE stream from events.ndjson. Use the task record's ID (server-generated,
-    // safe) rather than any user-supplied value for the path.
-    let events_path = store
-        .root
-        .join("tasks")
-        .join(&task.id)
-        .join("events.ndjson");
-    let task_snapshot = task.clone();
-
-    Ok(build_sse_stream(store.clone(), events_path, task_snapshot))
+    let events_path = store.root.join("tasks").join(&task.id).join("events.ndjson");
+    Ok(build_sse_stream(store.clone(), events_path, task))
 }
 
 /// POST /tasks/{id}/subscribe — subscribe to an existing task's events via SSE.

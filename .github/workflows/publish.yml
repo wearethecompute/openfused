@@ -52,7 +52,18 @@ jobs:
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_TOKEN }}
       - name: Wait for crates.io indexing
-        run: sleep 60
+        run: |
+          VERSION=${GITHUB_REF_NAME#v}
+          for i in $(seq 1 20); do
+            if cargo search openfused-core 2>/dev/null | grep -q "$VERSION"; then
+              echo "openfused-core $VERSION indexed"
+              exit 0
+            fi
+            echo "Waiting for crates.io index... ($i/20)"
+            sleep 10
+          done
+          echo "Timeout waiting for crates.io index"
+          exit 1
       - name: Publish openfused (CLI)
         run: |
           VERSION=${GITHUB_REF_NAME#v}

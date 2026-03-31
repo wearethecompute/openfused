@@ -191,15 +191,18 @@ inbox
   .option("-d, --dir <path>", "Context store directory", ".")
   .action(async (peerId, message, opts) => {
     const store = new ContextStore(resolve(opts.dir));
-    const filename = await store.sendInbox(peerId, message);
+    await store.sendInbox(peerId, message);
 
-    // Try immediate delivery — if peer is reachable, deliver now
-    const delivered = await deliverOne(store, peerId, filename);
-    if (delivered) {
-      console.log(`Delivered to ${peerId}.`);
-    } else {
-      console.log(`Queued for ${peerId}. Will deliver on next sync.`);
+    // Find the outbox file we just created
+    const outboxFile = findNewestOutboxFile(store.root, peerId);
+    if (outboxFile) {
+      const delivered = await deliverOne(store, peerId, outboxFile);
+      if (delivered) {
+        console.log(`Delivered to ${peerId}.`);
+        return;
+      }
     }
+    console.log(`Queued for ${peerId}. Will deliver on next sync.`);
   });
 
 // --- watch ---

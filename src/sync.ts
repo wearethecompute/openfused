@@ -375,9 +375,15 @@ async function syncSsh(
   const pushed: string[] = [];
   const errors: string[] = [];
 
+  const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+
   for (const file of ["CONTEXT.md", "PROFILE.md"]) {
     try {
       await execFile("rsync", ["-az", `${host}:${remotePath}/${file}`, join(peerDir, file)]);
+      // Wrap in unverified tags — SSH-synced content is untrusted external input
+      const raw = sanitizePeerContent(await readFile(join(peerDir, file), "utf-8"));
+      const wrapped = `<external_content_unverified from="${esc(peer.name)}" file="${esc(file)}">\n${raw}\n</external_content_unverified>`;
+      await writeFile(join(peerDir, file), wrapped);
       pulled.push(file);
     } catch (e: any) {
       errors.push(`${file}: ${e.stderr || e.message}`);
@@ -389,6 +395,16 @@ async function syncSsh(
     await mkdir(localDir, { recursive: true });
     try {
       await execFile("rsync", ["-az", "--delete", `${host}:${remotePath}/${dir}/`, `${localDir}/`]);
+      // Wrap each file in unverified tags
+      const { readdirSync } = await import("node:fs");
+      for (const fname of readdirSync(localDir)) {
+        const fpath = join(localDir, fname);
+        try {
+          const raw = sanitizePeerContent(await readFile(fpath, "utf-8"));
+          const wrapped = `<external_content_unverified from="${esc(peer.name)}" file="${esc(`${dir}/${fname}`)}">\n${raw}\n</external_content_unverified>`;
+          await writeFile(fpath, wrapped);
+        } catch {}
+      }
       pulled.push(`${dir}/`);
     } catch (e: any) {
       errors.push(`${dir}/: ${e.stderr || e.message}`);
