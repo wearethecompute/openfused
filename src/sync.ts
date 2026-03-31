@@ -277,7 +277,10 @@ async function syncHttp(
         const safeFrom = from.replace(/[^a-zA-Z0-9\-_]/g, "");
         const safeTs = ts.replace(/[^a-zA-Z0-9\-_]/g, "");
         const fname = `${safeTs}_from-${safeFrom}_to-${myName}.json`;
-        const outboxFile = msg._outboxFile; // filename on sender's outbox
+        // Sanitize outboxFile — it comes from the remote peer's response and could
+        // contain path traversal characters (e.g., "../../inbox/important.json").
+        const rawOutboxFile = msg._outboxFile || "";
+        const outboxFile = rawOutboxFile.replace(/[^a-zA-Z0-9_\-. ]/g, "");
         const dest = join(inboxDir, fname);
         if (!existsSync(dest)) {
           // Strip the _outboxFile metadata before saving

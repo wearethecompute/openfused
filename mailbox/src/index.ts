@@ -34,7 +34,7 @@ export default {
     const path = url.pathname;
 
     if (request.method === "OPTIONS") {
-      return new Response(null, { headers: corsHeaders() });
+      return new Response(null, { headers: corsHeaders(request) });
     }
 
     try {
@@ -134,6 +134,12 @@ async function receiveInbox(
     return json({ error: "Invalid signature" }, 403);
   }
 
+  // Reject stale messages — prevents replay of captured signed messages
+  const msgAge = Date.now() - new Date(msg.timestamp).getTime();
+  if (isNaN(msgAge) || Math.abs(msgAge) > 10 * 60 * 1000) {
+    return json({ error: "Message timestamp expired (10 minute window)" }, 403);
+  }
+
   // Determine recipient name — from path or query param
   let recipientName = "";
   if (path.startsWith("/inbox/")) {
@@ -152,12 +158,20 @@ async function receiveInbox(
     return json({ error: `Agent '${recipientName}' not registered` }, 404);
   }
 
-  // Verify recipient's endpoint is inbox.openfused.dev (they opted into hosted mailbox)
-  const expectedEndpoint = "https://inbox.openfused.dev";
-  if (recipient.e && !recipient.e.startsWith(expectedEndpoint)) {
-    return json({
-      error: `Agent '${recipientName}' has endpoint ${recipient.e} — deliver directly, not via hosted mailbox`,
-    }, 422);
+  // Verify recipient's endpoint is inbox.openfused.dev (they opted into hosted mailbox).
+  // Use URL origin comparison, not string prefix — prevents bypass via
+  // "https://inbox.openfused.dev.evil.com" matching a startsWith check.
+  if (recipient.e) {
+    try {
+      const endpointOrigin = new URL(recipient.e).origin;
+      if (endpointOrigin !== "https://inbox.openfused.dev") {
+        return json({
+          error: `Agent '${recipientName}' has endpoint ${recipient.e} — deliver directly, not via hosted mailbox`,
+        }, 422);
+      }
+    } catch {
+      return json({ error: `Agent '${recipientName}' has invalid endpoint` }, 422);
+    }
   }
 
   // Compute namespace
@@ -292,6 +306,10 @@ async function lookupAgent(env: Env, name: string): Promise<DnsTxtFields | null>
     });
     if (res.ok) {
       const data = await res.json() as any;
+      // Validate publicKey format — 64-char hex (Ed25519)
+      if (data.publicKey && !/^[0-9a-fA-F]{64}$/.test(data.publicKey)) {
+        return null;
+      }
       return {
         pk: data.publicKey,
         ek: data.encryptionKey,
@@ -299,9 +317,12 @@ async function lookupAgent(env: Env, name: string): Promise<DnsTxtFields | null>
         e: data.endpoint,
       };
     }
-  } catch {}
-
-  return null;
+    // Registry returned non-200 (e.g., 404) — agent not found
+    return null;
+  } catch (e) {
+    // Network error or timeout — registry unavailable, not "not found"
+    throw new Error("Registry unavailable — try again later");
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -372,11 +393,19 @@ function json(data: any, status = 200): Response {
   });
 }
 
-function corsHeaders(): Record<string, string> {
+function corsHeaders(request?: Request): Record<string, string> {
+  // Restrict CORS to known origins — don't allow arbitrary sites to read inbox data.
+  const allowed = ["https://openfused.dev", "https://claude.ai"];
+  let origin = "";
+  if (request) {
+    const reqOrigin = request.headers.get("origin") || "";
+    if (allowed.includes(reqOrigin)) origin = reqOrigin;
+  }
   return {
-    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Origin": origin || allowed[0],
     "Access-Control-Allow-Methods": "GET, POST, DELETE, HEAD, OPTIONS",
     "Access-Control-Allow-Headers":
       "Content-Type, X-OpenFuse-PublicKey, X-OpenFuse-Signature, X-OpenFuse-Timestamp",
+    "Vary": "Origin",
   };
 }
