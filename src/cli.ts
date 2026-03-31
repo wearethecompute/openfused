@@ -690,16 +690,37 @@ program
       }
       await store.writeConfig(config);
 
-      const filename = await store.sendInbox(name, message);
+      await store.sendInbox(name, message);
+
+      // Find the outbox file we just created — sendInbox returns the peer name,
+      // not the file path. The file is in outbox/{name}-{fp}/*.json.
+      const { readdirSync, statSync } = await import("node:fs");
+      const outboxDir = join(store.root, "outbox");
+      let outboxFile = "";
+      for (const entry of readdirSync(outboxDir)) {
+        if (entry.startsWith(`${name}-`) && statSync(join(outboxDir, entry)).isDirectory()) {
+          const files = readdirSync(join(outboxDir, entry))
+            .filter((f: string) => f.endsWith(".json"))
+            .sort()
+            .reverse();
+          if (files.length > 0) {
+            outboxFile = join(entry, files[0]);
+            break;
+          }
+        }
+      }
 
       // Try direct HTTP delivery if endpoint is http(s)
-      if (manifest.endpoint.startsWith("http")) {
+      if (manifest.endpoint.startsWith("http") && outboxFile) {
         try {
           // SSRF check: registry endpoints are attacker-controlled
           const { checkSsrf } = await import("./sync.js");
           await checkSsrf(manifest.endpoint);
-          const body = await readFile(join(store.root, "outbox", filename), "utf-8");
-          const r = await fetch(`${manifest.endpoint.replace(/\/$/, "")}/inbox`, {
+          const body = await readFile(join(outboxDir, outboxFile), "utf-8");
+          // Append ?to={name} for multi-tenant hosted mailboxes (inbox.openfused.dev).
+          // Self-hosted daemons ignore the query param (single-tenant).
+          const inboxUrl = `${manifest.endpoint.replace(/\/$/, "")}/inbox?to=${encodeURIComponent(name)}`;
+          const r = await fetch(inboxUrl, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body,
@@ -707,18 +728,19 @@ program
           if (r.ok) {
             // Archive to .sent/ within the recipient subdir
             const { mkdir, rename } = await import("node:fs/promises");
-            const filePath = join(store.root, "outbox", filename);
+            const filePath = join(outboxDir, outboxFile);
             const dir = join(filePath, "..");
             const sentDir = join(dir, ".sent");
-            const baseName = filename.includes("/") ? filename.split("/").pop()! : filename;
+            const baseName = outboxFile.includes("/") ? outboxFile.split("/").pop()! : outboxFile;
             await mkdir(sentDir, { recursive: true });
             await rename(filePath, join(sentDir, baseName));
             console.log(`Delivered to ${name}.`);
           } else {
             console.log(`Queued for ${name}. Endpoint returned ${r.status}. Will deliver on next sync.`);
           }
-        } catch {
+        } catch (e: any) {
           console.log(`Queued for ${name}. Will deliver on next sync.`);
+          if (process.env.DEBUG) console.error(`  Delivery error: ${e.message}`);
         }
       } else if (manifest.endpoint) {
         console.log(`Queued for ${name}. Run \`openfuse sync\` to deliver.`);
