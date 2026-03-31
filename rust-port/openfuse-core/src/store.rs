@@ -177,12 +177,12 @@ impl ContextStore {
 
         let context_path = self.root.join("CONTEXT.md");
         if !context_path.exists() {
-            fs::write(&context_path, include_str!("../../../templates/CONTEXT.md"))?;
+            fs::write(&context_path, include_str!("../templates/CONTEXT.md"))?;
         }
 
         let profile_path = self.root.join("PROFILE.md");
         if !profile_path.exists() {
-            fs::write(&profile_path, include_str!("../../../templates/PROFILE.md"))?;
+            fs::write(&profile_path, include_str!("../templates/PROFILE.md"))?;
         }
 
         let (public_key, encryption_key) = crypto::generate_keys(&self.root)?;
@@ -555,12 +555,12 @@ impl ContextStore {
 
         let charter_path = self.root.join("CHARTER.md");
         if !charter_path.exists() {
-            fs::write(&charter_path, include_str!("../../../templates/CHARTER.md"))?;
+            fs::write(&charter_path, include_str!("../templates/CHARTER.md"))?;
         }
 
         let context_path = self.root.join("CONTEXT.md");
         if !context_path.exists() {
-            fs::write(&context_path, include_str!("../../../templates/CONTEXT.md"))?;
+            fs::write(&context_path, include_str!("../templates/CONTEXT.md"))?;
         }
 
         let config = MeshConfig {

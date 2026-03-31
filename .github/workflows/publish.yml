@@ -44,8 +44,8 @@ jobs:
           for f in rust-port/openfuse-core/Cargo.toml rust-port/openfuse-cli/Cargo.toml daemon/Cargo.toml; do
             sed -i "0,/^version = /s/^version = \".*\"/version = \"$VERSION\"/" "$f"
           done
-          # Replace path dep with version dep for crates.io publishing
-          sed -i "s|openfused-core = { path = \"../openfuse-core\" }|openfused-core = \"$VERSION\"|" rust-port/openfuse-cli/Cargo.toml
+          # Replace path+version dep with version-only dep for crates.io publishing
+          sed -i "s|openfused-core = { path = \"../openfuse-core\", version = \"[^\"]*\" }|openfused-core = \"$VERSION\"|" rust-port/openfuse-cli/Cargo.toml
       - name: Publish openfused-core
         run: cd rust-port/openfuse-core && cargo publish --allow-dirty
         env:
