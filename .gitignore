@@ -19,7 +19,10 @@ store/*
 drafts/hn-post.md
 drafts/hosted-mailbox-plan.md
 drafts/
+# Deployed infrastructure (Workers, not part of SDK)
 hosted/
+mailbox/
+worker/
 demo/
 rust-port/target/
 wasm/*.wasm
