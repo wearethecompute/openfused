@@ -7,7 +7,7 @@ license = "MIT"
 repository = "https://github.com/openfused/openfused"
 
 [[bin]]
-name = "openfused"
+name = "openfuse"
 path = "src/main.rs"
 
 [dependencies]

@@ -68,12 +68,10 @@ history/       — archived [DONE] context
 openfuse context
 openfuse context --append "## Update\nFinished the research phase."
 
-# Mark work as done, then compact to history/ (TS CLI only)
-# (edit CONTEXT.md, add [DONE] to the header, then:)
+# Mark work as done, then compact to history/# (edit CONTEXT.md, add [DONE] to the header, then:)
 openfuse compact
 
-# Add validity windows to time-sensitive context (TS CLI only)
-# <!-- validity: 6h --> for task state, 1d for sprint, 3d for architecture
+# Add validity windows to time-sensitive context# <!-- validity: 6h --> for task state, 1d for sprint, 3d for architecture
 openfuse validate                    # scan for stale entries
 openfuse compact --prune-stale       # archive expired validity windows
 

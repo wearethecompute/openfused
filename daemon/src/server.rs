@@ -204,10 +204,6 @@ async fn bearer_auth_middleware(
 }
 
 // ---------------------------------------------------------------------------
-// Rate limit middleware (applied inline in handlers)
-// ---------------------------------------------------------------------------
-
-// ---------------------------------------------------------------------------
 // Core routes
 // ---------------------------------------------------------------------------
 
@@ -766,6 +762,15 @@ async fn receive_inbox(
         return Err(StatusCode::FORBIDDEN);
     }
 
+    // Reject stale messages — prevents replay of captured signed messages (10 min window)
+    if let Ok(ts) = chrono::DateTime::parse_from_rfc3339(timestamp) {
+        let age = chrono::Utc::now().signed_duration_since(ts);
+        if age.num_seconds().abs() > 600 {
+            tracing::warn!("Rejected stale message from: {} (age={}s)", from, age.num_seconds());
+            return Err(StatusCode::FORBIDDEN);
+        }
+    }
+
     let to = store
         .config()
         .await
@@ -1035,9 +1040,9 @@ async fn verify_key_ownership(store: &Arc<ContextStore>, name: &str, pubkey_hex:
         {
             return true;
         }
-        if config.trusted_keys.contains(&pubkey_hex.to_string()) {
-            return true;
-        }
+        // Note: trusted_keys (legacy v0.1 format) is NOT checked here because it
+        // has no name binding — would allow any name to authenticate with a trusted key.
+        // The Rust core migrates trusted_keys to keyring entries on first config read.
     }
     false
 }

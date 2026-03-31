@@ -278,7 +278,9 @@ async function syncHttp(
         // Sanitize outboxFile — it comes from the remote peer's response and could
         // contain path traversal characters (e.g., "../../inbox/important.json").
         const rawOutboxFile = msg._outboxFile || "";
-        const outboxFile = rawOutboxFile.replace(/[^a-zA-Z0-9_\-. ]/g, "");
+        // Allow / for subdir paths (e.g., "name-FP/filename.json") but strip
+        // path traversal (..) and other dangerous chars.
+        const outboxFile = rawOutboxFile.replace(/\.\./g, "").replace(/[^a-zA-Z0-9_\-./ ]/g, "");
         const dest = join(inboxDir, fname);
         if (!existsSync(dest)) {
           // Strip the _outboxFile metadata before saving
