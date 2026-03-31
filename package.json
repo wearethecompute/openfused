@@ -1,6 +1,7 @@
 {
   "name": "openfused",
-  "version": "0.3.23",
+  "version": "0.4.2",
+  "mcpName": "io.github.openfused/openfuse-mcp",
   "description": "The file protocol for AI agent context. Encrypted, signed, peer-to-peer.",
   "license": "MIT",
   "type": "module",
