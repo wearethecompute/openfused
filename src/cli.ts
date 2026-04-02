@@ -727,12 +727,14 @@ program
   .option("--internal", "Only send to internal agents")
   .option("--external", "Only send to external agents")
   .option("--subscribers", "Only send to subscribers (not trusted)")
-  .action(async (message: string, opts: { dir: string; internal?: boolean; external?: boolean; subscribers?: boolean }) => {
+  .option("--trusted-only", "Only send to trusted agents (skip subscribed-but-untrusted)")
+  .action(async (message: string, opts: { dir: string; internal?: boolean; external?: boolean; subscribers?: boolean; trustedOnly?: boolean }) => {
     const store = new ContextStore(resolve(opts.dir));
     const config = await store.readConfig();
 
     // Build recipient list
     let recipients = config.keyring.filter((e: any) => {
+      if (opts.trustedOnly) return e.trusted;
       if (opts.subscribers) return e.subscribed;
       return e.trusted || e.subscribed;
     });
@@ -746,6 +748,16 @@ program
     if (recipients.length === 0) {
       console.log("No recipients. Trust or subscribe to agents first.");
       return;
+    }
+
+    // Warn about untrusted recipients
+    const untrusted = recipients.filter((e: any) => !e.trusted);
+    if (untrusted.length > 0) {
+      console.log(`Warning: ${untrusted.length} recipient(s) are subscribed but NOT trusted:`);
+      for (const u of untrusted) {
+        console.log(`  ${u.name} (${u.fingerprint})`);
+      }
+      console.log(`Their keys have not been verified. Use --trusted-only to skip them.\n`);
     }
 
     console.log(`Broadcasting to ${recipients.length} agent(s)...`);
