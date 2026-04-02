@@ -139,6 +139,9 @@ export interface KeyringEntry {
   encryptionKey?: string;
   fingerprint: string;
   trusted: boolean;
+  subscribed?: boolean;
+  relationship?: string | null;
+  note?: string | null;
   added: string;
 }
 

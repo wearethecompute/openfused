@@ -138,6 +138,10 @@ pub struct InboxMessage {
     pub from: String,
     pub time: String,
     pub verified: bool,
+    pub trusted: bool,
+    pub subscribed: bool,
+    pub relationship: Option<String>,
+    pub note: Option<String>,
     pub encrypted: bool,
 }
 
@@ -224,6 +228,9 @@ impl ContextStore {
                         encryption_key: None,
                         fingerprint: crypto::fingerprint(&key),
                         trusted: true,
+                        subscribed: None,
+                        relationship: None,
+                        note: None,
                         added: chrono::Utc::now().to_rfc3339(),
                     });
                 }
@@ -324,20 +331,27 @@ impl ContextStore {
                 }
 
                 let sig_valid = crypto::verify_message(&signed);
-                // Identity binding: key must be trusted AND name must match the keyring entry.
+                // Identity binding: key must match AND name must match the keyring entry.
                 // Prevents a trusted agent from impersonating someone else via forged "from" field.
                 let auto_trust = config.auto_trust.unwrap_or(false);
                 let key_matches_name = |e: &KeyringEntry| {
                     e.signing_key.trim() == signed.public_key.trim()
                         && (e.name == signed.from || e.address.starts_with(&format!("{}@", signed.from)))
                 };
-                let trusted = if auto_trust {
-                    config.keyring.iter().any(key_matches_name)
-                } else {
-                    config.keyring.iter().any(|e| e.trusted && key_matches_name(e))
-                };
 
-                let verified = sig_valid && trusted;
+                // Resolve full trust metadata from keyring
+                let matching_entry = config.keyring.iter().find(|e| key_matches_name(e));
+                let is_trusted = if auto_trust {
+                    matching_entry.is_some()
+                } else {
+                    matching_entry.map_or(false, |e| e.trusted)
+                };
+                let is_subscribed = matching_entry.map_or(false, |e| e.subscribed.unwrap_or(false));
+                let relationship = matching_entry.and_then(|e| e.relationship.clone());
+                let note = matching_entry.and_then(|e| e.note.clone());
+
+                // verified = sig valid + key known in keyring
+                let verified = sig_valid && matching_entry.is_some();
 
                 // Decrypt if encrypted
                 let content = if signed.encrypted {
@@ -357,7 +371,14 @@ impl ContextStore {
                 } else {
                     signed.clone()
                 };
-                let wrapped = crypto::wrap_external_message(&display_signed, verified);
+                let trust = crypto::MessageTrust {
+                    verified,
+                    trusted: is_trusted,
+                    subscribed: is_subscribed,
+                    relationship: relationship.clone(),
+                    note: note.clone(),
+                };
+                let wrapped = crypto::wrap_external_message(&display_signed, &trust);
                 messages.push(InboxMessage {
                     file: fname,
                     content,
@@ -365,6 +386,10 @@ impl ContextStore {
                     from: signed.from.clone(),
                     time: signed.timestamp.clone(),
                     verified,
+                    trusted: is_trusted,
+                    subscribed: is_subscribed,
+                    relationship,
+                    note,
                     encrypted: signed.encrypted,
                 });
             } else {
@@ -391,6 +416,10 @@ impl ContextStore {
                     from,
                     time,
                     verified: false,
+                    trusted: false,
+                    subscribed: false,
+                    relationship: None,
+                    note: None,
                     encrypted: false,
                 });
             }

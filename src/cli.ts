@@ -173,7 +173,8 @@ inbox
   .description("List inbox messages")
   .option("-d, --dir <path>", "Context store directory", ".")
   .option("--raw", "Show raw content instead of wrapped")
-  .option("--all", "Show all messages including unverified (default: verified only)")
+  .option("--all", "Show all messages including unverified (default: verified + subscribed)")
+  .option("--trusted", "Show only trusted messages")
   .option("--no-sync", "Skip pulling from remote peers before listing")
   .action(async (opts) => {
     const store = new ContextStore(resolve(opts.dir));
@@ -188,27 +189,40 @@ inbox
       } catch {}
     }
     const allMessages = await store.readInbox();
-    // Default: only show verified messages. Unverified messages from unknown
-    // senders are hidden to prevent prompt injection. Use --all to see them.
-    const messages = opts.all ? allMessages : allMessages.filter((m: any) => m.verified);
+    // Default: show verified (trusted + subscribed). Use --all for everything.
+    let messages: any[];
+    if (opts.all) {
+      messages = allMessages;
+    } else if (opts.trusted) {
+      messages = allMessages.filter((m: any) => m.verified && m.trusted);
+    } else {
+      messages = allMessages.filter((m: any) => m.verified && (m.trusted || m.subscribed));
+    }
     const hidden = allMessages.length - messages.length;
     if (messages.length === 0 && hidden === 0) {
       console.log("Inbox is empty.");
       return;
     }
     if (messages.length === 0 && hidden > 0) {
-      console.log(`Inbox has ${hidden} unverified message(s) from untrusted senders.`);
-      console.log(`Run with --all to see them, or trust the sender: openfuse key trust <name>`);
+      console.log(`Inbox has ${hidden} message(s) from unsubscribed/untrusted senders.`);
+      console.log(`Run with --all to see them, or: openfuse key trust <name> / openfuse subscribe <name>`);
       return;
     }
     for (const msg of messages) {
-      const badge = msg.verified ? "[VERIFIED]" : "[UNVERIFIED]";
-      const enc = msg.encrypted ? " [ENCRYPTED]" : "";
-      console.log(`\n--- ${badge}${enc} From: ${msg.from} | ${msg.time} ---`);
+      // Build badge: [VERIFIED] [TRUSTED] [INTERNAL] etc.
+      const badges: string[] = [];
+      badges.push(msg.verified ? "[VERIFIED]" : "[UNVERIFIED]");
+      if (msg.trusted) badges.push("[TRUSTED]");
+      if (msg.subscribed) badges.push("[SUBSCRIBED]");
+      if (msg.relationship) badges.push(`[${msg.relationship.toUpperCase()}]`);
+      if (msg.encrypted) badges.push("[ENCRYPTED]");
+      const badgeStr = badges.join(" ");
+      const noteStr = msg.note ? ` (${msg.note})` : "";
+      console.log(`\n--- ${badgeStr} From: ${msg.from}${noteStr} | ${msg.time} ---`);
       console.log(opts.raw ? msg.content : msg.wrappedContent);
     }
     if (hidden > 0) {
-      console.log(`\n(${hidden} unverified message(s) hidden — use --all to show)`);
+      console.log(`\n(${hidden} message(s) hidden — use --all to show)`);
     }
   });
 
@@ -601,13 +615,21 @@ key
   .command("trust <query>")
   .description("Trust a key in the keyring (name, name:fingerprint, or fingerprint)")
   .option("-d, --dir <path>", "Context store directory", ".")
+  .option("--internal", "Mark as internal (same org/team)")
+  .option("--external", "Mark as external (partner/vendor)")
+  .option("--note <text>", "Private note about this peer")
   .action(async (query, opts) => {
     const store = new ContextStore(resolve(opts.dir));
     const config = await store.readConfig();
     const entry = resolveKeyring(config.keyring, query);
     entry.trusted = true;
+    if (opts.internal) entry.relationship = "internal";
+    else if (opts.external) entry.relationship = "external";
+    if (opts.note) entry.note = opts.note;
     await store.writeConfig(config);
-    console.log(`Trusted: ${entry.name} (${entry.fingerprint})`);
+    const rel = entry.relationship ? ` [${entry.relationship.toUpperCase()}]` : "";
+    console.log(`Trusted: ${entry.name} (${entry.fingerprint})${rel}`);
+    if (entry.note) console.log(`  Note: ${entry.note}`);
   });
 
 key
@@ -634,6 +656,134 @@ key
     console.log(`# Fingerprint: ${fingerprint(config.publicKey ?? "")}`);
     console.log(`signing:${config.publicKey}`);
     console.log(`encryption:${config.encryptionKey}`);
+  });
+
+// --- subscribe / unsubscribe / broadcast ---
+program
+  .command("subscribe <name>")
+  .description("Subscribe to an agent's broadcasts")
+  .option("-d, --dir <path>", "Context store directory", ".")
+  .option("-r, --registry <url>", "Registry URL")
+  .option("--note <text>", "Private note about this agent")
+  .action(async (name: string, opts: { dir: string; registry?: string; note?: string }) => {
+    const store = new ContextStore(resolve(opts.dir));
+    const reg = registry.resolveRegistry(opts.registry);
+    const config = await store.readConfig();
+
+    let entry = config.keyring.find((e: any) => e.name === name);
+    if (!entry) {
+      // Auto-import from registry
+      try {
+        const manifest = await registry.discover(name, reg);
+        entry = {
+          name: manifest.name,
+          address: `${manifest.name}@registry`,
+          signingKey: manifest.publicKey,
+          encryptionKey: manifest.encryptionKey,
+          fingerprint: manifest.fingerprint,
+          trusted: false,
+          subscribed: true,
+          relationship: null,
+          note: opts.note ?? null,
+          added: new Date().toISOString(),
+        };
+        config.keyring.push(entry);
+        console.log(`Imported key for ${manifest.name} from registry`);
+      } catch {
+        console.error(`Agent '${name}' not found in keyring or registry.`);
+        process.exit(1);
+      }
+    } else {
+      entry.subscribed = true;
+      if (opts.note) entry.note = opts.note;
+    }
+
+    await store.writeConfig(config);
+    console.log(`Subscribed to: ${entry!.name} (${entry!.fingerprint})`);
+    console.log(`Their broadcasts will appear in your inbox.`);
+  });
+
+program
+  .command("unsubscribe <name>")
+  .description("Unsubscribe from an agent's broadcasts")
+  .option("-d, --dir <path>", "Context store directory", ".")
+  .action(async (name: string, opts: { dir: string }) => {
+    const store = new ContextStore(resolve(opts.dir));
+    const config = await store.readConfig();
+    const entry = config.keyring.find((e: any) => e.name === name);
+    if (!entry) {
+      console.error(`Agent '${name}' not in keyring.`);
+      process.exit(1);
+    }
+    entry.subscribed = false;
+    await store.writeConfig(config);
+    console.log(`Unsubscribed from: ${entry.name}`);
+  });
+
+program
+  .command("broadcast <message>")
+  .description("Send a message to all trusted + subscribed agents")
+  .option("-d, --dir <path>", "Context store directory", ".")
+  .option("--internal", "Only send to internal agents")
+  .option("--external", "Only send to external agents")
+  .option("--subscribers", "Only send to subscribers (not trusted)")
+  .action(async (message: string, opts: { dir: string; internal?: boolean; external?: boolean; subscribers?: boolean }) => {
+    const store = new ContextStore(resolve(opts.dir));
+    const config = await store.readConfig();
+
+    // Build recipient list
+    let recipients = config.keyring.filter((e: any) => {
+      if (opts.subscribers) return e.subscribed;
+      return e.trusted || e.subscribed;
+    });
+
+    if (opts.internal) {
+      recipients = recipients.filter((e: any) => e.relationship === "internal");
+    } else if (opts.external) {
+      recipients = recipients.filter((e: any) => e.relationship === "external");
+    }
+
+    if (recipients.length === 0) {
+      console.log("No recipients. Trust or subscribe to agents first.");
+      return;
+    }
+
+    console.log(`Broadcasting to ${recipients.length} agent(s)...`);
+    let delivered = 0;
+    let queued = 0;
+
+    for (const recipient of recipients) {
+      try {
+        await store.sendInbox(recipient.name, message);
+        // Try HTTP delivery
+        const peer = config.peers.find((p: any) => p.name === recipient.name && p.url?.startsWith("http"));
+        if (peer) {
+          const outboxFile = findNewestOutboxFile(store.root, recipient.name);
+          if (outboxFile) {
+            const { checkSsrf } = await import("./sync.js");
+            await checkSsrf(peer.url);
+            const body = await readFile(join(store.root, "outbox", outboxFile), "utf-8");
+            const inboxUrl = `${peer.url.replace(/\/$/, "")}/inbox/${encodeURIComponent(recipient.name)}`;
+            const r = await fetch(inboxUrl, { method: "POST", headers: { "Content-Type": "application/json" }, body });
+            if (r.ok) {
+              const { mkdir, rename } = await import("node:fs/promises");
+              const filePath = join(store.root, "outbox", outboxFile);
+              const sentDir = join(filePath, "..", ".sent");
+              const baseName = outboxFile.split("/").pop()!;
+              await mkdir(sentDir, { recursive: true });
+              await rename(filePath, join(sentDir, baseName));
+              delivered++;
+              continue;
+            }
+          }
+        }
+        queued++;
+      } catch {
+        queued++;
+      }
+    }
+
+    console.log(`Done. ${delivered} delivered, ${queued} queued for sync.`);
   });
 
 // --- sync ---

@@ -480,6 +480,7 @@ async fn main() -> Result<()> {
                 config.keyring.push(crypto::KeyringEntry {
                     name: name.clone(), address: addr.clone(), signing_key,
                     encryption_key, fingerprint: fp.clone(), trusted: auto_trust,
+                    subscribed: None, relationship: None, note: None,
                     added: chrono::Utc::now().to_rfc3339(),
                 });
                 s.write_config(&config)?;
@@ -641,6 +642,7 @@ async fn main() -> Result<()> {
                         encryption_key: manifest.encryption_key.clone(),
                         fingerprint: manifest.fingerprint.clone(),
                         trusted: false,
+                        subscribed: None, relationship: None, note: None,
                         added: chrono::Utc::now().to_rfc3339(),
                     });
                     s.write_config(&config)?;

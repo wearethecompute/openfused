@@ -52,6 +52,15 @@ pub struct KeyringEntry {
     /// SHA-256 fingerprint of signing key
     pub fingerprint: String,
     pub trusted: bool,
+    /// Subscribed to this agent's broadcasts
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub subscribed: Option<bool>,
+    /// Relationship: "internal" (same org) or "external" (partner/vendor)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub relationship: Option<String>,
+    /// Private note about this peer (never shared, local CRM)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub note: Option<String>,
     pub added: String,
 }
 
@@ -263,13 +272,51 @@ fn age_decrypt(ciphertext: &[u8], store_root: &Path) -> Result<Vec<u8>> {
 /// Wrap a signed message in XML tags for safe injection into LLM context.
 /// XML escaping prevents prompt injection — a malicious `from` field containing
 /// `</external_message>` can't break out of the wrapper and forge trust signals.
-pub fn wrap_external_message(signed: &SignedMessage, verified: bool) -> String {
-    let status = if verified { "verified" } else { "UNVERIFIED" };
+/// Trust metadata resolved from keyring at display time
+#[derive(Debug, Default)]
+pub struct MessageTrust {
+    pub verified: bool,
+    pub trusted: bool,
+    pub subscribed: bool,
+    pub relationship: Option<String>,  // "internal", "external", or None
+    pub note: Option<String>,
+}
+
+pub fn wrap_external_message(signed: &SignedMessage, trust: &MessageTrust) -> String {
     let esc = |s: &str| s.replace('&', "&amp;").replace('"', "&quot;").replace('<', "&lt;").replace('>', "&gt;");
+
+    // Build badge string: [VERIFIED] [TRUSTED] [INTERNAL] etc.
+    let mut badges = Vec::new();
+    if trust.verified { badges.push("VERIFIED"); } else { badges.push("UNVERIFIED"); }
+    if trust.trusted { badges.push("TRUSTED"); }
+    if trust.subscribed { badges.push("SUBSCRIBED"); }
+    if let Some(ref rel) = trust.relationship {
+        badges.push(if rel == "internal" { "INTERNAL" } else { "EXTERNAL" });
+    }
+    let status = badges.join(" ");
+
+    let mut attrs = format!(
+        "from=\"{}\" verified=\"{}\" trusted=\"{}\" subscribed=\"{}\" time=\"{}\" status=\"{}\"",
+        esc(&signed.from), trust.verified, trust.trusted, trust.subscribed,
+        esc(&signed.timestamp), esc(&status)
+    );
+    if let Some(ref rel) = trust.relationship {
+        attrs.push_str(&format!(" relationship=\"{}\"", esc(rel)));
+    }
+    if let Some(ref note) = trust.note {
+        attrs.push_str(&format!(" note=\"{}\"", esc(note)));
+    }
+
     format!(
-        "<external_message from=\"{}\" verified=\"{}\" time=\"{}\" status=\"{}\">\n{}\n</external_message>",
-        esc(&signed.from), verified, esc(&signed.timestamp), status, esc(&signed.message)
+        "<external_message {}>\n{}\n</external_message>",
+        attrs, esc(&signed.message)
     )
+}
+
+/// Legacy wrapper for backward compat (verified-only, no trust metadata)
+pub fn wrap_external_message_simple(signed: &SignedMessage, verified: bool) -> String {
+    let trust = MessageTrust { verified, ..Default::default() };
+    wrap_external_message(signed, &trust)
 }
 
 // ---------------------------------------------------------------------------
