@@ -72,6 +72,23 @@ export async function register(store: ContextStore, endpoint: string, registry: 
 // DNS format: v=of1 e={endpoint} pk={pubkey} ek={agekey} fp={fingerprint}
 // Self-hosted: _openfuse.{name}.{their-domain} — user manages their own TXT records.
 // Our zone: _openfuse.{name}.openfused.net — managed by the registry Worker on registration.
+export interface AgentListEntry {
+  name: string;
+  endpoint: string;
+  fingerprint: string;
+  dns: string;
+}
+
+export async function listAgents(registry: string): Promise<AgentListEntry[]> {
+  const resp = await fetch(`${registry.replace(/\/$/, "")}/agents`);
+  if (!resp.ok) {
+    if (resp.status === 404) throw new Error(`Registry at ${registry} does not support agent listing (/agents endpoint). Try discovering agents by name: openfuse discover <name>`);
+    throw new Error(`Registry returned ${resp.status}`);
+  }
+  const data = (await resp.json()) as { agents: AgentListEntry[]; count: number };
+  return data.agents || [];
+}
+
 export async function discover(name: string, registry: string): Promise<Manifest> {
   // If name contains a dot, it's a domain — try DNS TXT directly
   // Otherwise try DNS at openfused.net, then fall back to registry API
