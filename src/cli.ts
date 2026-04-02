@@ -644,6 +644,22 @@ program
     const config = await store.readConfig();
     const agentName = opts.name || `${config.name}.openfused.net`;
     const manifest = await registry.register(store, opts.endpoint || "", reg, agentName);
+
+    // Auto-add endpoint as a peer so sync/inbox list can pull from it
+    if (manifest.endpoint?.startsWith("http")) {
+      const config2 = await store.readConfig();
+      const selfName = config2.name;
+      if (!config2.peers.some((p: any) => p.url === manifest.endpoint && p.name === selfName)) {
+        config2.peers.push({
+          id: (await import("nanoid")).nanoid(12),
+          name: selfName,
+          url: manifest.endpoint,
+          access: "read" as const,
+        });
+        await store.writeConfig(config2);
+      }
+    }
+
     console.log(`Registered: ${manifest.name} [SIGNED]`);
     if (manifest.endpoint) console.log(`  Endpoint:    ${manifest.endpoint}`);
     else console.log(`  Endpoint:    (none — keys-only registration)`);
