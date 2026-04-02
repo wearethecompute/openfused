@@ -858,31 +858,11 @@ program
 
 // --- discover ---
 program
-  .command("discover [name]")
-  .description("Look up an agent or list all agents from a registry")
-  .option("-r, --registry <url>", "Registry URL")
+  .command("discover <name>")
+  .description("Look up an agent by name via DNS")
+  .option("-r, --registry <url>", "Registry URL (fallback if DNS fails)")
   .action(async (name, opts) => {
     const reg = registry.resolveRegistry(opts.registry);
-
-    if (!name) {
-      // List all agents from registry
-      const agents = await registry.listAgents(reg);
-      if (agents.length === 0) {
-        console.log("No agents registered.");
-        return;
-      }
-      console.log(`${agents.length} agent(s) on ${reg}:\n`);
-      for (const a of agents) {
-        const hosted = a.endpoint?.includes("inbox.openfused.dev") ? " [hosted]" : a.endpoint ? " [self-hosted]" : "";
-        console.log(`  ${a.name}${hosted}`);
-        if (a.endpoint) console.log(`    endpoint: ${a.endpoint}`);
-        console.log(`    fingerprint: ${a.fingerprint}`);
-        console.log(`    dns: ${a.dns}`);
-        console.log();
-      }
-      return;
-    }
-
     const manifest = await registry.discover(name, reg);
     const status = manifest.revoked
       ? "[REVOKED]"
