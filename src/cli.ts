@@ -124,7 +124,42 @@ program
     const store = new ContextStore(resolve(opts.dir));
     if (opts.set) {
       await store.writeProfile(opts.set);
-      console.log("Profile updated.");
+      console.log("Profile updated locally.");
+
+      // Push to remote endpoint if agent has an HTTP peer for itself
+      const config = await store.readConfig();
+      const endpoint = config.peers?.find(
+        (p: any) => p.name === config.name && p.url?.startsWith("http"),
+      )?.url;
+      if (endpoint) {
+        try {
+          const { signChallenge } = await import("./crypto.js");
+          const timestamp = new Date().toISOString();
+          const challenge = `PROFILE:${config.name}:${timestamp}`;
+          const { signature, publicKey } = await signChallenge(store.root, challenge);
+          const resp = await fetch(
+            `${endpoint}/profile/${encodeURIComponent(config.name)}`,
+            {
+              method: "PUT",
+              headers: {
+                "Content-Type": "text/plain",
+                "X-OpenFuse-PublicKey": publicKey,
+                "X-OpenFuse-Signature": signature,
+                "X-OpenFuse-Timestamp": timestamp,
+              },
+              body: opts.set,
+            },
+          );
+          if (resp.ok) {
+            console.log("Profile synced to hosted mailbox.");
+          } else {
+            const err = await resp.text();
+            console.error(`Failed to sync profile to mailbox: ${err}`);
+          }
+        } catch (e: any) {
+          console.error(`Failed to sync profile: ${e.message}`);
+        }
+      }
     } else {
       console.log(await store.readProfile());
     }
