@@ -36,10 +36,12 @@ program
   .command("init")
   .description("Initialize a new context store or shared workspace")
   .option("-n, --name <name>", "Agent name", "agent")
-  .option("-d, --dir <path>", "Directory to init", ".")
+  .option("-d, --dir <path>", "Directory to init (default: ~/.openfuse)")
   .option("--workspace", "Initialize as a shared workspace (CHARTER.md + tasks/ + messages/ + _broadcast/)")
   .action(async (opts) => {
-    const store = new ContextStore(resolve(opts.dir));
+    const { homedir } = await import("node:os");
+    const initDir = opts.dir ? resolve(opts.dir) : join(homedir(), ".openfuse", opts.name);
+    const store = new ContextStore(initDir);
     if (await store.exists()) {
       console.error("Context store already exists at", store.root);
       process.exit(1);
