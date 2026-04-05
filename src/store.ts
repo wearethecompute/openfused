@@ -112,10 +112,15 @@ export class ContextStore {
   }
 
   async init(name: string, id: string): Promise<void> {
+    // Create dir before WASM init — WASI preopens require the directory to exist
+    const { mkdir } = await import("node:fs/promises");
+    await mkdir(this.root, { recursive: true });
     await this.core.init(name, id);
   }
 
   async initWorkspace(name: string, id: string): Promise<void> {
+    const { mkdir } = await import("node:fs/promises");
+    await mkdir(this.root, { recursive: true });
     await this.core.initWorkspace(name, id);
   }
 
