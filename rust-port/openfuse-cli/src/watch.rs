@@ -35,7 +35,8 @@ pub fn watch_store(store_root: &Path) -> Result<()> {
                                     if let Ok(raw) = std::fs::read_to_string(path) {
                                         if let Ok(signed) = serde_json::from_str::<crypto::SignedMessage>(&raw) {
                                             let verified = crypto::verify_message(&signed);
-                                            let wrapped = crypto::wrap_external_message(&signed, verified);
+                                            let trust = crypto::MessageTrust { verified, ..Default::default() };
+                                            let wrapped = crypto::wrap_external_message(&signed, &trust);
                                             println!("\n[inbox] New message from {}:", signed.from);
                                             println!("{}", wrapped);
                                         } else {

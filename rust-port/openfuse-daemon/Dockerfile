@@ -4,6 +4,7 @@ FROM rust:slim AS builder
 WORKDIR /build
 COPY Cargo.toml Cargo.lock ./
 COPY openfuse-core/ openfuse-core/
+COPY openfuse-cli/ openfuse-cli/
 COPY openfuse-daemon/ openfuse-daemon/
 # Only build the daemon (skip CLI)
 RUN cargo build --release -p openfused-daemon && \
